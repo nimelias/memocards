@@ -1,0 +1,53 @@
+---
+description: Dev Ideas — MemoCards
+alwaysApply: true
+---
+
+# MemoCards
+
+Este repositorio está vinculado a **Dev Ideas**. Al iniciar una sesión de codificación:
+
+1. Usa la herramienta MCP `get_work_guidance` para conocer prioridades y tareas en curso.
+2. Consulta `get_project_context` o el recurso `project://context` para requisitos y estado completo.
+3. Usa `list_requirements` y `list_tasks` para datos actualizados antes de implementar cambios.
+4. Respeta requisitos con prioridad `critical` o `high` antes que el resto.
+5. Actualiza el estado en Dev Ideas con `save_requirement` o `note_requirement` cuando corresponda.
+
+## Entorno
+
+- Ruta local: `/home/vani/zatikiLabs/apps/memocards`
+- Repositorio (producción): `https://github.com/nimelias/memocards`
+
+## Instrucciones del proyecto
+
+## Rol
+
+App móvil tipo Anki: mazos, tarjetas, repaso con repetición espaciada (SM-2).
+
+## Stack
+
+- Expo SDK + React Native + TypeScript
+- expo-sqlite (datos locales en el dispositivo)
+- @react-navigation/native
+- Sin Android SDK en el portátil: NO usar expo run:android ni Gradle local
+
+## Repositorio
+
+- Remoto (producción / fuente de verdad del código): https://github.com/nimelias/memocards
+- Ruta local: /home/vani/zatikiLabs/apps/memocards
+
+## Desarrollo (sin SDK)
+
+npm install && npx expo start — preview con Expo Go.
+
+## Builds
+
+GitHub Actions genera APK debug; descargar desde Artifacts.
+
+## Convenciones
+
+Consultar MCP Dev Ideas; commits/push solo si el usuario lo pide.
+
+## Nota
+
+Este archivo se genera desde Dev Ideas. Edítalo en la ficha del proyecto o sincroniza con «Sincronizar reglas».

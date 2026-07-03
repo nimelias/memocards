@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "dev-ideas": {
+      "url": "http://10.10.10.1:3004/mcp/p/3"
+    }
+  }
+}

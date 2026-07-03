@@ -1,0 +1,46 @@
+export const SCHEMA_SQL = `
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS decks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  parent_id INTEGER REFERENCES decks(id) ON DELETE SET NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS notes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  deck_id INTEGER NOT NULL REFERENCES decks(id) ON DELETE CASCADE,
+  fields_json TEXT NOT NULL DEFAULT '{}',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cards (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+  due INTEGER NOT NULL,
+  interval REAL NOT NULL DEFAULT 0,
+  ease_factor REAL NOT NULL DEFAULT 2.5,
+  repetitions INTEGER NOT NULL DEFAULT 0,
+  lapses INTEGER NOT NULL DEFAULT 0,
+  queue TEXT NOT NULL DEFAULT 'new',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS review_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  card_id INTEGER NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  rating INTEGER NOT NULL,
+  interval_before REAL NOT NULL,
+  interval_after REAL NOT NULL,
+  reviewed_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_notes_deck ON notes(deck_id);
+CREATE INDEX IF NOT EXISTS idx_cards_note ON cards(note_id);
+CREATE INDEX IF NOT EXISTS idx_cards_due ON cards(queue, due);
+CREATE INDEX IF NOT EXISTS idx_review_log_card ON review_log(card_id);
+`;
