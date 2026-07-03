@@ -48,6 +48,13 @@ GitHub Actions genera APK debug; descargar desde Artifacts.
 
 Consultar MCP Dev Ideas; commits/push solo si el usuario lo pide.
 
+## MCP Dev Ideas
+
+- URL del proyecto: `http://10.10.10.1:3004/mcp/p/3`
+- Config en repo: `.cursor/mcp.json`
+- Global (todos los repos): puente en `~/.cursor/mcp.json` → `dev_ideas/lib/cursor-mcp-bridge.js`
+- Herramientas: `get_project`, `list_requirements`, `get_requirement`, `list_tasks`, `save_requirement`, `note_requirement`, `get_project_context`, `get_work_guidance`
+
 ## Nota
 
 Este archivo se genera desde Dev Ideas. Edítalo en la ficha del proyecto o sincroniza con «Sincronizar reglas».
