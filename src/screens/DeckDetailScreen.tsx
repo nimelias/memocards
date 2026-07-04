@@ -74,75 +74,81 @@ export function DeckDetailScreen({ navigation, route }: Props) {
 
   return (
     <ScreenContainer>
-      <ScreenTitle>{deckName}</ScreenTitle>
-
-      <View style={styles.stats}>
-        <Stat label="Nuevas" value={stats.newCount} />
-        <Stat label="Repaso" value={stats.dueCount} />
-        <Stat label="Total" value={stats.total} />
-      </View>
-
-      <Pressable
-        style={[styles.reviewBtn, !canReview && styles.reviewBtnDisabled]}
-        disabled={!canReview}
-        onPress={() => navigation.navigate('Review', { deckId, deckName })}
-      >
-        <Text style={styles.reviewBtnText}>Estudiar</Text>
-      </Pressable>
-
-      <Pressable
-        style={styles.secondaryBtn}
-        onPress={() => navigation.navigate('NoteEditor', { deckId })}
-      >
-        <Text style={styles.secondaryBtnText}>Nueva tarjeta</Text>
-      </Pressable>
-
-      <Pressable style={styles.settingsToggle} onPress={() => setShowSettings((v) => !v)}>
-        <Text style={styles.settingsToggleText}>
-          {showSettings ? 'Ocultar configuración' : 'Configuración del mazo'}
-        </Text>
-      </Pressable>
-
-      {showSettings && (
-        <View style={styles.settings}>
-          <Text style={styles.settingsLabel}>Días de estudio (vacío = sin límite)</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Ej. 30"
-            keyboardType="number-pad"
-            value={studyDays}
-            onChangeText={setStudyDays}
-          />
-          <Text style={styles.settingsHint}>
-            Las tarjetas no se programarán más allá del último día del periodo.
-          </Text>
-
-          <Text style={styles.settingsLabel}>Repeticiones mínimas por tarjeta</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="1"
-            keyboardType="number-pad"
-            value={minRepetitions}
-            onChangeText={setMinRepetitions}
-          />
-          <Text style={styles.settingsHint}>
-            Durante el periodo, las tarjetas con menos repeticiones seguirán en cola.
-          </Text>
-
-          <Pressable style={styles.saveBtn} onPress={handleSaveSettings}>
-            <Text style={styles.saveBtnText}>Guardar configuración</Text>
-          </Pressable>
-
-          <Pressable style={styles.resetBtn} onPress={handleReset}>
-            <Text style={styles.resetBtnText}>Resetear mazo</Text>
-          </Pressable>
-        </View>
-      )}
-
-      <Text style={styles.sectionTitle}>Tarjetas</Text>
       <FlatList
         data={notes}
         keyExtractor={(item) => String(item.id)}
+        style={styles.list}
+        contentContainerStyle={styles.listContent}
+        ListHeaderComponent={(
+          <>
+            <ScreenTitle>{deckName}</ScreenTitle>
+
+            <View style={styles.stats}>
+              <Stat label="Nuevas" value={stats.newCount} />
+              <Stat label="Repaso" value={stats.dueCount} />
+              <Stat label="Total" value={stats.total} />
+            </View>
+
+            <Pressable
+              style={[styles.reviewBtn, !canReview && styles.reviewBtnDisabled]}
+              disabled={!canReview}
+              onPress={() => navigation.navigate('Review', { deckId, deckName })}
+            >
+              <Text style={styles.reviewBtnText}>Estudiar</Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.secondaryBtn}
+              onPress={() => navigation.navigate('NoteEditor', { deckId })}
+            >
+              <Text style={styles.secondaryBtnText}>Nueva tarjeta</Text>
+            </Pressable>
+
+            <Pressable style={styles.settingsToggle} onPress={() => setShowSettings((v) => !v)}>
+              <Text style={styles.settingsToggleText}>
+                {showSettings ? 'Ocultar configuración' : 'Configuración del mazo'}
+              </Text>
+            </Pressable>
+
+            {showSettings && (
+              <View style={styles.settings}>
+                <Text style={styles.settingsLabel}>Días de estudio (vacío = sin límite)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Ej. 30"
+                  keyboardType="number-pad"
+                  value={studyDays}
+                  onChangeText={setStudyDays}
+                />
+                <Text style={styles.settingsHint}>
+                  Las tarjetas no se programarán más allá del último día del periodo.
+                </Text>
+
+                <Text style={styles.settingsLabel}>Repeticiones mínimas por tarjeta</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="1"
+                  keyboardType="number-pad"
+                  value={minRepetitions}
+                  onChangeText={setMinRepetitions}
+                />
+                <Text style={styles.settingsHint}>
+                  Durante el periodo, las tarjetas con menos repeticiones seguirán en cola.
+                </Text>
+
+                <Pressable style={styles.saveBtn} onPress={handleSaveSettings}>
+                  <Text style={styles.saveBtnText}>Guardar configuración</Text>
+                </Pressable>
+
+                <Pressable style={styles.resetBtn} onPress={handleReset}>
+                  <Text style={styles.resetBtnText}>Resetear mazo</Text>
+                </Pressable>
+              </View>
+            )}
+
+            <Text style={styles.sectionTitle}>Tarjetas</Text>
+          </>
+        )}
         ListEmptyComponent={<EmptyState message="Este mazo no tiene tarjetas." />}
         renderItem={({ item }) => (
           <Pressable
@@ -168,6 +174,12 @@ function Stat({ label, value }: { label: string; value: number }) {
 }
 
 const styles = StyleSheet.create({
+  list: {
+    flex: 1,
+  },
+  listContent: {
+    flexGrow: 1,
+  },
   stats: {
     flexDirection: 'row',
     gap: 8,

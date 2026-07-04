@@ -43,7 +43,7 @@ export function NoteEditorScreen({ navigation, route }: Props) {
   }, [back, deckId, front, isEdit, navigation, noteId]);
 
   return (
-    <ScreenContainer>
+    <ScreenContainer scroll>
       <ScreenTitle>{isEdit ? 'Editar tarjeta' : 'Nueva tarjeta'}</ScreenTitle>
 
       <Text style={styles.label}>Frente</Text>

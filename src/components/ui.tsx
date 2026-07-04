@@ -1,13 +1,28 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-export function ScreenContainer({ children }: { children: React.ReactNode }) {
+export function ScreenContainer({ children, scroll = false }: { children: React.ReactNode; scroll?: boolean }) {
   const insets = useSafeAreaInsets();
-  return (
-    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-      {children}
-    </View>
-  );
+  const style = [styles.container, { paddingBottom: Math.max(insets.bottom, 16) }];
+
+  if (scroll) {
+    return (
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          style={styles.flex}
+          contentContainerStyle={style}
+          keyboardShouldPersistTaps="handled"
+        >
+          {children}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    );
+  }
+
+  return <View style={[styles.flex, style]}>{children}</View>;
 }
 
 export function ScreenTitle({ children }: { children: string }) {
@@ -23,8 +38,11 @@ export function EmptyState({ message }: { message: string }) {
 }
 
 const styles = StyleSheet.create({
-  container: {
+  flex: {
     flex: 1,
+  },
+  container: {
+    flexGrow: 1,
     backgroundColor: '#f8fafc',
     padding: 16,
   },
