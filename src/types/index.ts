@@ -21,6 +21,8 @@ export interface DeckSettings {
 export interface NoteFields {
   front: string;
   back: string;
+  frontImage?: string;
+  backImage?: string;
 }
 
 export interface Note {

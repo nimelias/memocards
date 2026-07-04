@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import {
+  Alert,
   FlatList,
   Pressable,
   StyleSheet,
@@ -12,6 +13,7 @@ import { createDeck, listDecks } from '../db';
 import type { Deck, RootStackParamList } from '../types';
 import { EmptyState, ScreenContainer, ScreenTitle } from '../components/ui';
 import { useFocusEffect } from '@react-navigation/native';
+import { pickAndImportJson, shareExportJson } from '../lib/export-import';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'DeckList'>;
 
@@ -37,6 +39,24 @@ export function DeckListScreen({ navigation }: Props) {
     await load();
   }
 
+  async function handleExport() {
+    try {
+      await shareExportJson();
+    } catch {
+      Alert.alert('Error', 'No se pudo exportar.');
+    }
+  }
+
+  async function handleImport() {
+    try {
+      const count = await pickAndImportJson();
+      await load();
+      Alert.alert('Importación', count > 0 ? `Se importaron ${count} tarjetas.` : 'No se importó nada.');
+    } catch {
+      Alert.alert('Error', 'No se pudo importar el archivo JSON.');
+    }
+  }
+
   return (
     <ScreenContainer>
       <ScreenTitle>Mazos</ScreenTitle>
@@ -51,6 +71,15 @@ export function DeckListScreen({ navigation }: Props) {
         />
         <Pressable style={styles.primaryBtn} onPress={handleCreate}>
           <Text style={styles.primaryBtnText}>Crear</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.ioRow}>
+        <Pressable style={styles.ioBtn} onPress={handleExport}>
+          <Text style={styles.ioBtnText}>Exportar JSON</Text>
+        </Pressable>
+        <Pressable style={styles.ioBtn} onPress={handleImport}>
+          <Text style={styles.ioBtnText}>Importar JSON</Text>
         </Pressable>
       </View>
 
@@ -96,6 +125,25 @@ const styles = StyleSheet.create({
   primaryBtnText: {
     color: '#fff',
     fontWeight: '600',
+  },
+  ioRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+  ioBtn: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  ioBtnText: {
+    color: '#2563eb',
+    fontWeight: '600',
+    fontSize: 14,
   },
   deckRow: {
     backgroundColor: '#fff',

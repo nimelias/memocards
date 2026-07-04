@@ -13,6 +13,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { getDeck, getDeckStats, listNotes, resetDeck, updateDeckSettings } from '../db';
 import type { Note, RootStackParamList } from '../types';
 import { EmptyState, ScreenContainer, ScreenTitle } from '../components/ui';
+import { shareExportJson } from '../lib/export-import';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'DeckDetail'>;
 
@@ -104,6 +105,15 @@ export function DeckDetailScreen({ navigation, route }: Props) {
               <Text style={styles.secondaryBtnText}>Nueva tarjeta</Text>
             </Pressable>
 
+            <Pressable
+              style={styles.secondaryBtn}
+              onPress={() => shareExportJson(deckId).catch(() =>
+                Alert.alert('Error', 'No se pudo exportar el mazo.'),
+              )}
+            >
+              <Text style={styles.secondaryBtnText}>Exportar mazo (JSON)</Text>
+            </Pressable>
+
             <Pressable style={styles.settingsToggle} onPress={() => setShowSettings((v) => !v)}>
               <Text style={styles.settingsToggleText}>
                 {showSettings ? 'Ocultar configuración' : 'Configuración del mazo'}
@@ -155,7 +165,9 @@ export function DeckDetailScreen({ navigation, route }: Props) {
             style={styles.noteRow}
             onPress={() => navigation.navigate('NoteEditor', { deckId, noteId: item.id })}
           >
-            <Text style={styles.noteFront} numberOfLines={2}>{item.fields.front || '(sin frente)'}</Text>
+            <Text style={styles.noteFront} numberOfLines={2}>
+              {item.fields.front || (item.fields.frontImage ? '(imagen)' : '(sin frente)')}
+            </Text>
             <Text style={styles.noteBack} numberOfLines={1}>{item.fields.back || '(sin reverso)'}</Text>
           </Pressable>
         )}

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { getDueCards, reviewCard } from '../db';
 import type { CardWithNote, ReviewRating, RootStackParamList } from '../types';
+import { CardImage } from '../components/CardImage';
 import { EmptyState, ScreenContainer } from '../components/ui';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Review'>;
@@ -81,10 +82,28 @@ export function ReviewScreen({ navigation, route }: Props) {
         </Text>
 
         <View style={styles.card}>
-          <Text style={styles.cardLabel}>{revealed ? 'Reverso' : 'Frente'}</Text>
-          <Text style={styles.cardText}>
-            {revealed ? current.note.fields.back : current.note.fields.front}
-          </Text>
+          <ScrollView style={styles.cardScroll} contentContainerStyle={styles.cardContent}>
+            <Text style={styles.cardLabel}>{revealed ? 'Reverso' : 'Frente'}</Text>
+            {revealed ? (
+              <>
+                {current.note.fields.back ? (
+                  <Text style={styles.cardText}>{current.note.fields.back}</Text>
+                ) : null}
+                {current.note.fields.backImage ? (
+                  <CardImage uri={current.note.fields.backImage} maxHeight={240} />
+                ) : null}
+              </>
+            ) : (
+              <>
+                {current.note.fields.front ? (
+                  <Text style={styles.cardText}>{current.note.fields.front}</Text>
+                ) : null}
+                {current.note.fields.frontImage ? (
+                  <CardImage uri={current.note.fields.frontImage} maxHeight={240} />
+                ) : null}
+              </>
+            )}
+          </ScrollView>
         </View>
 
         <View style={styles.footer}>
@@ -125,10 +144,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
     borderRadius: 16,
-    padding: 24,
     borderWidth: 1,
     borderColor: '#e2e8f0',
+    overflow: 'hidden',
+  },
+  cardScroll: {
+    flex: 1,
+  },
+  cardContent: {
+    flexGrow: 1,
     justifyContent: 'center',
+    padding: 24,
   },
   cardLabel: {
     fontSize: 12,

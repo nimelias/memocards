@@ -43,6 +43,8 @@ function parseNoteFields(raw: string): NoteFields {
     return {
       front: parsed.front ?? '',
       back: parsed.back ?? '',
+      frontImage: parsed.frontImage,
+      backImage: parsed.backImage,
     };
   } catch {
     return { front: '', back: '' };
@@ -364,3 +366,91 @@ export function cardIsDue(card: Card, at = Date.now()): boolean {
 }
 
 export type { ReviewLog };
+
+export type ExportPayload = {
+  decks: Array<{
+    name: string;
+    studyDays: number | null;
+    minRepetitions: number;
+    notes: Array<{
+      fields: NoteFields;
+      card: {
+        due: number;
+        interval: number;
+        easeFactor: number;
+        repetitions: number;
+        lapses: number;
+        queue: CardQueue;
+      };
+    }>;
+  }>;
+};
+
+export async function exportDecks(deckId?: number): Promise<ExportPayload> {
+  const decks = deckId ? [await getDeck(deckId)].filter(Boolean) as Deck[] : await listDecks();
+  const result: ExportPayload = { decks: [] };
+
+  for (const deck of decks) {
+    const notes = await listNotes(deck.id);
+    const noteExports = await Promise.all(
+      notes.map(async (note) => {
+        const cardRow = await (await getDatabase()).getFirstAsync(
+          'SELECT * FROM cards WHERE note_id = ? LIMIT 1',
+          note.id,
+        );
+        const card = cardRow ? rowToCard(cardRow as Record<string, unknown>) : null;
+        return {
+          fields: note.fields,
+          card: card ?? {
+            due: Date.now(),
+            interval: 0,
+            easeFactor: 2.5,
+            repetitions: 0,
+            lapses: 0,
+            queue: 'new' as CardQueue,
+          },
+        };
+      }),
+    );
+    result.decks.push({
+      name: deck.name,
+      studyDays: deck.studyDays,
+      minRepetitions: deck.minRepetitions,
+      notes: noteExports,
+    });
+  }
+
+  return result;
+}
+
+export async function importDecks(payload: ExportPayload): Promise<number> {
+  let imported = 0;
+  for (const deckData of payload.decks) {
+    const deck = await createDeck(deckData.name);
+    if (deckData.studyDays || deckData.minRepetitions > 1) {
+      await updateDeckSettings(deck.id, {
+        studyDays: deckData.studyDays,
+        minRepetitions: deckData.minRepetitions,
+      });
+    }
+    for (const noteData of deckData.notes) {
+      const note = await createNote(deck.id, noteData.fields);
+      const db = await getDatabase();
+      await db.runAsync(
+        `UPDATE cards
+         SET due = ?, interval = ?, ease_factor = ?, repetitions = ?, lapses = ?, queue = ?, updated_at = ?
+         WHERE note_id = ?`,
+        noteData.card.due,
+        noteData.card.interval,
+        noteData.card.easeFactor,
+        noteData.card.repetitions,
+        noteData.card.lapses,
+        noteData.card.queue,
+        Date.now(),
+        note.id,
+      );
+      imported += 1;
+    }
+  }
+  return imported;
+}
