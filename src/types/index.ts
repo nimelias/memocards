@@ -6,8 +6,16 @@ export interface Deck {
   id: number;
   name: string;
   parentId: number | null;
+  studyDays: number | null;
+  minRepetitions: number;
+  studyStartAt: number | null;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface DeckSettings {
+  studyDays: number | null;
+  minRepetitions: number;
 }
 
 export interface NoteFields {

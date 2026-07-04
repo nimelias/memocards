@@ -75,39 +75,46 @@ export function ReviewScreen({ navigation, route }: Props) {
 
   return (
     <ScreenContainer>
-      <Text style={styles.progress}>
-        {index + 1} / {queue.length}
-      </Text>
-
-      <View style={styles.card}>
-        <Text style={styles.cardLabel}>{revealed ? 'Reverso' : 'Frente'}</Text>
-        <Text style={styles.cardText}>
-          {revealed ? current.note.fields.back : current.note.fields.front}
+      <View style={styles.layout}>
+        <Text style={styles.progress}>
+          {index + 1} / {queue.length}
         </Text>
-      </View>
 
-      {!revealed ? (
-        <Pressable style={styles.revealBtn} onPress={() => setRevealed(true)}>
-          <Text style={styles.revealBtnText}>Mostrar respuesta</Text>
-        </Pressable>
-      ) : (
-        <View style={styles.ratingRow}>
-          {RATINGS.map(({ rating, label, color }) => (
-            <Pressable
-              key={rating}
-              style={[styles.ratingBtn, { backgroundColor: color }]}
-              onPress={() => handleRate(rating)}
-            >
-              <Text style={styles.ratingBtnText}>{label}</Text>
-            </Pressable>
-          ))}
+        <View style={styles.card}>
+          <Text style={styles.cardLabel}>{revealed ? 'Reverso' : 'Frente'}</Text>
+          <Text style={styles.cardText}>
+            {revealed ? current.note.fields.back : current.note.fields.front}
+          </Text>
         </View>
-      )}
+
+        <View style={styles.footer}>
+          {!revealed ? (
+            <Pressable style={styles.revealBtn} onPress={() => setRevealed(true)}>
+              <Text style={styles.revealBtnText}>Mostrar respuesta</Text>
+            </Pressable>
+          ) : (
+            <View style={styles.ratingRow}>
+              {RATINGS.map(({ rating, label, color }) => (
+                <Pressable
+                  key={rating}
+                  style={[styles.ratingBtn, { backgroundColor: color }]}
+                  onPress={() => handleRate(rating)}
+                >
+                  <Text style={styles.ratingBtnText}>{label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+        </View>
+      </View>
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
+  layout: {
+    flex: 1,
+  },
   progress: {
     textAlign: 'center',
     color: '#64748b',
@@ -122,7 +129,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e2e8f0',
     justifyContent: 'center',
-    marginBottom: 16,
   },
   cardLabel: {
     fontSize: 12,
@@ -136,6 +142,9 @@ const styles = StyleSheet.create({
     fontSize: 22,
     lineHeight: 32,
     color: '#0f172a',
+  },
+  footer: {
+    paddingTop: 16,
   },
   revealBtn: {
     backgroundColor: '#2563eb',

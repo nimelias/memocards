@@ -1,7 +1,13 @@
 import { StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export function ScreenContainer({ children }: { children: React.ReactNode }) {
-  return <View style={styles.container}>{children}</View>;
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+      {children}
+    </View>
+  );
 }
 
 export function ScreenTitle({ children }: { children: string }) {

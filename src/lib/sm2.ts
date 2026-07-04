@@ -77,3 +77,16 @@ export function isDue(card: Card, now = Date.now()): boolean {
   if (card.queue === 'new') return true;
   return card.due <= now;
 }
+
+export function studyEndDate(studyStartAt: number, studyDays: number): number {
+  return addDays(startOfDay(studyStartAt), studyDays);
+}
+
+export function capDueToStudyPeriod(
+  due: number,
+  studyStartAt: number | null,
+  studyDays: number | null,
+): number {
+  if (!studyStartAt || !studyDays) return due;
+  return Math.min(due, studyEndDate(studyStartAt, studyDays));
+}

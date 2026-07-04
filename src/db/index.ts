@@ -1,6 +1,6 @@
 import * as SQLite from 'expo-sqlite';
-import type { Card, CardQueue, CardWithNote, Deck, Note, NoteFields, ReviewLog, ReviewRating } from '../types';
-import { isDue, scheduleReview, startOfDay } from '../lib/sm2';
+import type { Card, CardQueue, CardWithNote, Deck, DeckSettings, Note, NoteFields, ReviewLog, ReviewRating } from '../types';
+import { capDueToStudyPeriod, isDue, scheduleReview, startOfDay, studyEndDate } from '../lib/sm2';
 import { SCHEMA_SQL } from './schema';
 
 const DB_NAME = 'memocards.db';
@@ -12,10 +12,25 @@ export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
     dbPromise = (async () => {
       const db = await SQLite.openDatabaseAsync(DB_NAME);
       await db.execAsync(SCHEMA_SQL);
+      await runMigrations(db);
       return db;
     })();
   }
   return dbPromise;
+}
+
+async function runMigrations(db: SQLite.SQLiteDatabase) {
+  const cols = await db.getAllAsync<{ name: string }>('PRAGMA table_info(decks)');
+  const colNames = new Set(cols.map((c) => c.name));
+  if (!colNames.has('study_days')) {
+    await db.execAsync('ALTER TABLE decks ADD COLUMN study_days INTEGER');
+  }
+  if (!colNames.has('min_repetitions')) {
+    await db.execAsync('ALTER TABLE decks ADD COLUMN min_repetitions INTEGER NOT NULL DEFAULT 1');
+  }
+  if (!colNames.has('study_start_at')) {
+    await db.execAsync('ALTER TABLE decks ADD COLUMN study_start_at INTEGER');
+  }
 }
 
 function now() {
@@ -39,6 +54,9 @@ function rowToDeck(row: Record<string, unknown>): Deck {
     id: row.id as number,
     name: row.name as string,
     parentId: (row.parent_id as number | null) ?? null,
+    studyDays: (row.study_days as number | null) ?? null,
+    minRepetitions: (row.min_repetitions as number) ?? 1,
+    studyStartAt: (row.study_start_at as number | null) ?? null,
     createdAt: row.created_at as number,
     updatedAt: row.updated_at as number,
   };
@@ -88,6 +106,9 @@ export async function createDeck(name: string): Promise<Deck> {
     id: result.lastInsertRowId,
     name: name.trim(),
     parentId: null,
+    studyDays: null,
+    minRepetitions: 1,
+    studyStartAt: null,
     createdAt: ts,
     updatedAt: ts,
   };
@@ -97,6 +118,62 @@ export async function getDeck(deckId: number): Promise<Deck | null> {
   const db = await getDatabase();
   const row = await db.getFirstAsync('SELECT * FROM decks WHERE id = ?', deckId);
   return row ? rowToDeck(row as Record<string, unknown>) : null;
+}
+
+export async function updateDeckSettings(deckId: number, settings: DeckSettings): Promise<Deck | null> {
+  const db = await getDatabase();
+  const ts = now();
+  const studyDays = settings.studyDays && settings.studyDays > 0 ? settings.studyDays : null;
+  const minRepetitions = Math.max(1, settings.minRepetitions);
+
+  const existing = await getDeck(deckId);
+  const studyStartAt = studyDays
+    ? existing?.studyStartAt && existing.studyDays === studyDays
+      ? existing.studyStartAt
+      : ts
+    : null;
+
+  await db.runAsync(
+    'UPDATE decks SET study_days = ?, min_repetitions = ?, study_start_at = ?, updated_at = ? WHERE id = ?',
+    studyDays,
+    minRepetitions,
+    studyStartAt,
+    ts,
+    deckId,
+  );
+  return getDeck(deckId);
+}
+
+export async function resetDeck(deckId: number): Promise<void> {
+  const db = await getDatabase();
+  const ts = now();
+  const deck = await getDeck(deckId);
+
+  await db.runAsync(
+    `UPDATE cards
+     SET due = ?, interval = 0, ease_factor = 2.5, repetitions = 0, lapses = 0, queue = 'new', updated_at = ?
+     WHERE note_id IN (SELECT id FROM notes WHERE deck_id = ?)`,
+    ts,
+    ts,
+    deckId,
+  );
+
+  await db.runAsync(
+    `DELETE FROM review_log
+     WHERE card_id IN (
+       SELECT c.id FROM cards c JOIN notes n ON n.id = c.note_id WHERE n.deck_id = ?
+     )`,
+    deckId,
+  );
+
+  if (deck?.studyDays) {
+    await db.runAsync(
+      'UPDATE decks SET study_start_at = ?, updated_at = ? WHERE id = ?',
+      ts,
+      ts,
+      deckId,
+    );
+  }
 }
 
 export async function listNotes(deckId: number): Promise<Note[]> {
@@ -190,21 +267,33 @@ export async function getDeckStats(deckId: number): Promise<{ newCount: number; 
 
 export async function getDueCards(deckId: number, limit = 20): Promise<CardWithNote[]> {
   const db = await getDatabase();
+  const deck = await getDeck(deckId);
   const ts = now();
   const endOfDay = startOfDay(ts) + 86_400_000 - 1;
+  const studyEnd = deck?.studyDays && deck.studyStartAt
+    ? studyEndDate(deck.studyStartAt, deck.studyDays)
+    : null;
+  const minRepetitions = deck?.minRepetitions ?? 1;
+  const inStudyWindow = studyEnd !== null && ts <= studyEnd;
 
   const rows = await db.getAllAsync(
     `SELECT c.*, n.id as n_id, n.deck_id, n.fields_json, n.created_at as n_created_at, n.updated_at as n_updated_at
      FROM cards c
      JOIN notes n ON n.id = c.note_id
      WHERE n.deck_id = ?
-       AND (c.queue = 'new' OR c.due <= ?)
+       AND (
+         c.queue = 'new'
+         OR c.due <= ?
+         OR (? = 1 AND c.repetitions < ?)
+       )
      ORDER BY
        CASE c.queue WHEN 'learning' THEN 0 WHEN 'review' THEN 1 WHEN 'new' THEN 2 ELSE 3 END,
        c.due ASC
      LIMIT ?`,
     deckId,
     endOfDay,
+    inStudyWindow ? 1 : 0,
+    minRepetitions,
     limit,
   );
 
@@ -228,15 +317,21 @@ export async function reviewCard(cardId: number, rating: ReviewRating): Promise<
   if (!row) return null;
 
   const card = rowToCard(row as Record<string, unknown>);
+  const noteRow = await db.getFirstAsync('SELECT deck_id FROM notes WHERE id = ?', card.noteId);
+  const deck = noteRow ? await getDeck((noteRow as { deck_id: number }).deck_id) : null;
+
   const intervalBefore = card.interval;
   const result = scheduleReview(card, rating);
+  const cappedDue = deck
+    ? capDueToStudyPeriod(result.due, deck.studyStartAt, deck.studyDays)
+    : result.due;
   const ts = now();
 
   await db.runAsync(
     `UPDATE cards
      SET due = ?, interval = ?, ease_factor = ?, repetitions = ?, lapses = ?, queue = ?, updated_at = ?
      WHERE id = ?`,
-    result.due,
+    cappedDue,
     result.interval,
     result.easeFactor,
     result.repetitions,
@@ -259,6 +354,7 @@ export async function reviewCard(cardId: number, rating: ReviewRating): Promise<
   return {
     ...card,
     ...result,
+    due: cappedDue,
     updatedAt: ts,
   };
 }
