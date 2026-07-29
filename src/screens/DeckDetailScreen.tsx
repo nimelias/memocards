@@ -161,15 +161,12 @@ export function DeckDetailScreen({ navigation, route }: Props) {
         )}
         ListEmptyComponent={<EmptyState message="Este mazo no tiene tarjetas." />}
         renderItem={({ item }) => (
-          <Pressable
-            style={styles.noteRow}
-            onPress={() => navigation.navigate('NoteEditor', { deckId, noteId: item.id })}
-          >
+          <View style={styles.noteRow}>
             <Text style={styles.noteFront} numberOfLines={2}>
               {item.fields.front || (item.fields.frontImage ? '(imagen)' : '(sin frente)')}
             </Text>
             <Text style={styles.noteBack} numberOfLines={1}>{item.fields.back || '(sin reverso)'}</Text>
-          </Pressable>
+          </View>
         )}
       />
     </ScreenContainer>

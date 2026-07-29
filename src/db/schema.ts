@@ -43,4 +43,9 @@ CREATE INDEX IF NOT EXISTS idx_notes_deck ON notes(deck_id);
 CREATE INDEX IF NOT EXISTS idx_cards_note ON cards(note_id);
 CREATE INDEX IF NOT EXISTS idx_cards_due ON cards(queue, due);
 CREATE INDEX IF NOT EXISTS idx_review_log_card ON review_log(card_id);
+
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 `;

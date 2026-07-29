@@ -62,6 +62,14 @@ export interface ReviewLog {
 export type RootStackParamList = {
   DeckList: undefined;
   DeckDetail: { deckId: number; deckName: string };
-  NoteEditor: { deckId: number; noteId?: number };
+  NoteEditor: { deckId: number };
+  Settings: undefined;
   Review: { deckId: number; deckName: string };
+};
+
+export type ThemeName = 'light' | 'dark' | 'sand';
+
+export type UiSettings = {
+  theme: ThemeName;
+  fontScale: number;
 };

@@ -14,12 +14,14 @@ import type { Deck, RootStackParamList } from '../types';
 import { EmptyState, ScreenContainer, ScreenTitle } from '../components/ui';
 import { useFocusEffect } from '@react-navigation/native';
 import { pickAndImportJson, shareExportJson } from '../lib/export-import';
+import { useUiSettings } from '../context/UiSettingsProvider';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'DeckList'>;
 
 export function DeckListScreen({ navigation }: Props) {
   const [decks, setDecks] = useState<Deck[]>([]);
   const [name, setName] = useState('');
+  const { settings, theme, toggleDarkLight } = useUiSettings();
 
   const load = useCallback(async () => {
     setDecks(await listDecks());
@@ -59,27 +61,46 @@ export function DeckListScreen({ navigation }: Props) {
 
   return (
     <ScreenContainer>
-      <ScreenTitle>Mazos</ScreenTitle>
+      <View style={styles.titleRow}>
+        <ScreenTitle>Mazos</ScreenTitle>
+        <View style={styles.titleActions}>
+          <Pressable
+            style={[styles.iconBtn, { borderColor: theme.border, backgroundColor: theme.card }]}
+            onPress={() => void toggleDarkLight()}
+          >
+            <Text style={{ color: theme.text, fontSize: 14 }}>
+              {settings.theme === 'dark' ? '☀' : '☾'}
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[styles.iconBtn, { borderColor: theme.border, backgroundColor: theme.card }]}
+            onPress={() => navigation.navigate('Settings')}
+          >
+            <Text style={{ color: theme.text, fontSize: 14 }}>⚙</Text>
+          </Pressable>
+        </View>
+      </View>
 
       <View style={styles.form}>
         <TextInput
-          style={styles.input}
+          style={[styles.input, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
           placeholder="Nombre del mazo"
+          placeholderTextColor={theme.muted}
           value={name}
           onChangeText={setName}
           onSubmitEditing={handleCreate}
         />
-        <Pressable style={styles.primaryBtn} onPress={handleCreate}>
+        <Pressable style={[styles.primaryBtn, { backgroundColor: theme.primary }]} onPress={handleCreate}>
           <Text style={styles.primaryBtnText}>Crear</Text>
         </Pressable>
       </View>
 
       <View style={styles.ioRow}>
-        <Pressable style={styles.ioBtn} onPress={handleExport}>
-          <Text style={styles.ioBtnText}>Exportar JSON</Text>
+        <Pressable style={[styles.ioBtn, { backgroundColor: theme.card, borderColor: theme.border }]} onPress={handleExport}>
+          <Text style={[styles.ioBtnText, { color: theme.primary }]}>Exportar JSON</Text>
         </Pressable>
-        <Pressable style={styles.ioBtn} onPress={handleImport}>
-          <Text style={styles.ioBtnText}>Importar JSON</Text>
+        <Pressable style={[styles.ioBtn, { backgroundColor: theme.card, borderColor: theme.border }]} onPress={handleImport}>
+          <Text style={[styles.ioBtnText, { color: theme.primary }]}>Importar JSON</Text>
         </Pressable>
       </View>
 
@@ -89,10 +110,10 @@ export function DeckListScreen({ navigation }: Props) {
         ListEmptyComponent={<EmptyState message="Aún no hay mazos. Crea el primero arriba." />}
         renderItem={({ item }) => (
           <Pressable
-            style={styles.deckRow}
+            style={[styles.deckRow, { backgroundColor: theme.card, borderColor: theme.border }]}
             onPress={() => navigation.navigate('DeckDetail', { deckId: item.id, deckName: item.name })}
           >
-            <Text style={styles.deckName}>{item.name}</Text>
+            <Text style={[styles.deckName, { color: theme.text }]}>{item.name}</Text>
           </Pressable>
         )}
       />
@@ -101,6 +122,24 @@ export function DeckListScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  titleActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  iconBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   form: {
     flexDirection: 'row',
     gap: 8,
@@ -108,9 +147,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    backgroundColor: '#fff',
     borderWidth: 1,
-    borderColor: '#e2e8f0',
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -133,12 +170,10 @@ const styles = StyleSheet.create({
   },
   ioBtn: {
     flex: 1,
-    backgroundColor: '#fff',
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#e2e8f0',
   },
   ioBtnText: {
     color: '#2563eb',
@@ -146,16 +181,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   deckRow: {
-    backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
   },
   deckName: {
     fontSize: 17,
     fontWeight: '600',
-    color: '#0f172a',
   },
 });

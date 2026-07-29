@@ -1,9 +1,21 @@
 import * as SQLite from 'expo-sqlite';
-import type { Card, CardQueue, CardWithNote, Deck, DeckSettings, Note, NoteFields, ReviewLog, ReviewRating } from '../types';
+import type {
+  Card,
+  CardQueue,
+  CardWithNote,
+  Deck,
+  DeckSettings,
+  Note,
+  NoteFields,
+  ReviewLog,
+  ReviewRating,
+  UiSettings,
+} from '../types';
 import { capDueToStudyPeriod, isDue, scheduleReview, startOfDay, studyEndDate } from '../lib/sm2';
 import { SCHEMA_SQL } from './schema';
 
 const DB_NAME = 'memocards.db';
+const DEFAULT_UI_SETTINGS: UiSettings = { theme: 'light', fontScale: 1 };
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
@@ -235,6 +247,41 @@ export async function updateNote(noteId: number, fields: NoteFields): Promise<No
     noteId,
   );
   return getNote(noteId);
+}
+
+export async function getUiSettings(): Promise<UiSettings> {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<{ key: string; value: string }>(
+    `SELECT key, value FROM app_settings WHERE key IN ('ui.theme', 'ui.fontScale')`,
+  );
+  const map = new Map(rows.map((r) => [r.key, r.value]));
+  const themeRaw = map.get('ui.theme');
+  const fontRaw = Number(map.get('ui.fontScale'));
+  const theme = themeRaw === 'dark' || themeRaw === 'sand' ? themeRaw : 'light';
+  const fontScale = Number.isFinite(fontRaw) && fontRaw >= 0.9 && fontRaw <= 1.4 ? fontRaw : 1;
+  return { theme, fontScale };
+}
+
+export async function saveUiSettings(next: Partial<UiSettings>): Promise<UiSettings> {
+  const db = await getDatabase();
+  const cur = await getUiSettings();
+  const merged: UiSettings = {
+    theme: next.theme ?? cur.theme,
+    fontScale: next.fontScale ?? cur.fontScale,
+  };
+  await db.runAsync(
+    `INSERT INTO app_settings (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    'ui.theme',
+    merged.theme,
+  );
+  await db.runAsync(
+    `INSERT INTO app_settings (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    'ui.fontScale',
+    String(merged.fontScale),
+  );
+  return merged;
 }
 
 export async function getDeckStats(deckId: number): Promise<{ newCount: number; dueCount: number; total: number }> {

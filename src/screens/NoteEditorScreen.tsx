@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { createNote, getNote, updateNote } from '../db';
+import { createNote } from '../db';
 import type { RootStackParamList } from '../types';
 import { CardImage } from '../components/CardImage';
 import { ScreenContainer, ScreenTitle } from '../components/ui';
@@ -10,24 +10,12 @@ import { deleteCardImage, pickCardImage } from '../lib/card-images';
 type Props = NativeStackScreenProps<RootStackParamList, 'NoteEditor'>;
 
 export function NoteEditorScreen({ navigation, route }: Props) {
-  const { deckId, noteId } = route.params;
-  const isEdit = noteId != null;
+  const { deckId } = route.params;
   const [front, setFront] = useState('');
   const [back, setBack] = useState('');
   const [frontImage, setFrontImage] = useState<string | undefined>();
   const [backImage, setBackImage] = useState<string | undefined>();
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (!noteId) return;
-    getNote(noteId).then((note) => {
-      if (!note) return;
-      setFront(note.fields.front);
-      setBack(note.fields.back);
-      setFrontImage(note.fields.frontImage);
-      setBackImage(note.fields.backImage);
-    });
-  }, [noteId]);
 
   async function attachImage(side: 'front' | 'back') {
     const uri = await pickCardImage();
@@ -64,29 +52,16 @@ export function NoteEditorScreen({ navigation, route }: Props) {
         frontImage,
         backImage,
       };
-      if (isEdit && noteId) {
-        const prev = await getNote(noteId);
-        await updateNote(noteId, fields);
-        if (prev) {
-          if (prev.fields.frontImage && prev.fields.frontImage !== frontImage) {
-            await deleteCardImage(prev.fields.frontImage);
-          }
-          if (prev.fields.backImage && prev.fields.backImage !== backImage) {
-            await deleteCardImage(prev.fields.backImage);
-          }
-        }
-      } else {
-        await createNote(deckId, fields);
-      }
+      await createNote(deckId, fields);
       navigation.goBack();
     } finally {
       setSaving(false);
     }
-  }, [back, backImage, deckId, front, frontImage, isEdit, navigation, noteId]);
+  }, [back, backImage, deckId, front, frontImage, navigation]);
 
   return (
     <ScreenContainer scroll>
-      <ScreenTitle>{isEdit ? 'Editar tarjeta' : 'Nueva tarjeta'}</ScreenTitle>
+      <ScreenTitle>Nueva tarjeta</ScreenTitle>
 
       <Text style={styles.label}>Frente</Text>
       <TextInput

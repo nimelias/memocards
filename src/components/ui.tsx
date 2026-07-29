@@ -1,9 +1,11 @@
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useUiSettings } from '../context/UiSettingsProvider';
 
 export function ScreenContainer({ children, scroll = false }: { children: React.ReactNode; scroll?: boolean }) {
   const insets = useSafeAreaInsets();
-  const style = [styles.container, { paddingBottom: Math.max(insets.bottom, 16) }];
+  const { theme } = useUiSettings();
+  const style = [styles.container, { paddingBottom: Math.max(insets.bottom, 16), backgroundColor: theme.background }];
 
   if (scroll) {
     return (
@@ -26,13 +28,15 @@ export function ScreenContainer({ children, scroll = false }: { children: React.
 }
 
 export function ScreenTitle({ children }: { children: string }) {
-  return <Text style={styles.title}>{children}</Text>;
+  const { settings, theme } = useUiSettings();
+  return <Text style={[styles.title, { color: theme.text, fontSize: Math.round(24 * settings.fontScale) }]}>{children}</Text>;
 }
 
 export function EmptyState({ message }: { message: string }) {
+  const { settings, theme } = useUiSettings();
   return (
     <View style={styles.empty}>
-      <Text style={styles.emptyText}>{message}</Text>
+      <Text style={[styles.emptyText, { color: theme.muted, fontSize: Math.round(15 * settings.fontScale) }]}>{message}</Text>
     </View>
   );
 }
@@ -43,13 +47,10 @@ const styles = StyleSheet.create({
   },
   container: {
     flexGrow: 1,
-    backgroundColor: '#f8fafc',
     padding: 16,
   },
   title: {
-    fontSize: 24,
     fontWeight: '700',
-    color: '#0f172a',
     marginBottom: 16,
   },
   empty: {
@@ -59,8 +60,6 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   emptyText: {
-    fontSize: 15,
-    color: '#64748b',
     textAlign: 'center',
   },
 });
