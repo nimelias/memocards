@@ -11,11 +11,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -24,34 +19,21 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Prebuild Android
-        run: npx expo prebuild --platform android --no-install
-
-      - name: Configure release signing for CI
+      - name: Install SDK packages
         run: |
-          node <<'EOF'
-          const fs = require('fs');
-          const path = 'android/app/build.gradle';
-          let content = fs.readFileSync(path, 'utf8');
-          if (!content.includes('signingConfig signingConfigs.debug')) {
-            content = content.replace(
-              /release\s*\{/,
-              'release {\n            signingConfig signingConfigs.debug',
-            );
-            fs.writeFileSync(path, content);
-          }
-          EOF
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+          yes | sdkmanager --licenses >/dev/null || true
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Build release APK
-        working-directory: android
-        run: ./gradlew assembleRelease --no-daemon
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
 
       - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: memocards-release-apk
-          path: android/app/build/outputs/apk/release/app-release.apk
+          path: app/build/outputs/apk/release/app-release.apk
           retention-days: 14

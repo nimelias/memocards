@@ -1,0 +1,243 @@
+package com.zatiki.memocards.data
+
+import androidx.room.ColumnInfo
+import androidx.room.Dao
+import androidx.room.Database
+import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.Index
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.PrimaryKey
+import androidx.room.Query
+import androidx.room.RoomDatabase
+import androidx.room.Update
+
+@Entity(tableName = "decks")
+data class DeckEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    @ColumnInfo(name = "parent_id") val parentId: Long? = null,
+    @ColumnInfo(name = "study_days") val studyDays: Int? = null,
+    @ColumnInfo(name = "min_repetitions") val minRepetitions: Int = 1,
+    @ColumnInfo(name = "study_start_at") val studyStartAt: Long? = null,
+    @ColumnInfo(name = "created_at") val createdAt: Long,
+    @ColumnInfo(name = "updated_at") val updatedAt: Long,
+)
+
+@Entity(
+    tableName = "notes",
+    foreignKeys = [
+        ForeignKey(
+            entity = DeckEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["deck_id"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("deck_id")],
+)
+data class NoteEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @ColumnInfo(name = "deck_id") val deckId: Long,
+    @ColumnInfo(name = "fields_json") val fieldsJson: String = "{}",
+    @ColumnInfo(name = "created_at") val createdAt: Long,
+    @ColumnInfo(name = "updated_at") val updatedAt: Long,
+)
+
+@Entity(
+    tableName = "cards",
+    foreignKeys = [
+        ForeignKey(
+            entity = NoteEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["note_id"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("note_id"), Index(value = ["queue", "due"])],
+)
+data class CardEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @ColumnInfo(name = "note_id") val noteId: Long,
+    val due: Long,
+    val interval: Double = 0.0,
+    @ColumnInfo(name = "ease_factor") val easeFactor: Double = 2.5,
+    val repetitions: Int = 0,
+    val lapses: Int = 0,
+    val queue: String = "new",
+    @ColumnInfo(name = "created_at") val createdAt: Long,
+    @ColumnInfo(name = "updated_at") val updatedAt: Long,
+)
+
+@Entity(
+    tableName = "review_log",
+    foreignKeys = [
+        ForeignKey(
+            entity = CardEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["card_id"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("card_id")],
+)
+data class ReviewLogEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @ColumnInfo(name = "card_id") val cardId: Long,
+    val rating: Int,
+    @ColumnInfo(name = "interval_before") val intervalBefore: Double,
+    @ColumnInfo(name = "interval_after") val intervalAfter: Double,
+    @ColumnInfo(name = "reviewed_at") val reviewedAt: Long,
+)
+
+@Entity(tableName = "app_settings")
+data class AppSettingEntity(
+    @PrimaryKey val key: String,
+    val value: String,
+)
+
+data class CardNoteRow(
+    @ColumnInfo(name = "id") val cardId: Long,
+    @ColumnInfo(name = "note_id") val noteId: Long,
+    val due: Long,
+    val interval: Double,
+    @ColumnInfo(name = "ease_factor") val easeFactor: Double,
+    val repetitions: Int,
+    val lapses: Int,
+    val queue: String,
+    @ColumnInfo(name = "created_at") val cardCreatedAt: Long,
+    @ColumnInfo(name = "updated_at") val cardUpdatedAt: Long,
+    @ColumnInfo(name = "n_id") val noteRowId: Long,
+    @ColumnInfo(name = "deck_id") val deckId: Long,
+    @ColumnInfo(name = "fields_json") val fieldsJson: String,
+    @ColumnInfo(name = "n_created_at") val noteCreatedAt: Long,
+    @ColumnInfo(name = "n_updated_at") val noteUpdatedAt: Long,
+)
+
+data class QueueDueCount(
+    val queue: String,
+    val due: Long,
+    val count: Int,
+)
+
+@Dao
+interface MemoDao {
+    @Query("SELECT * FROM decks ORDER BY name COLLATE NOCASE")
+    suspend fun listDecks(): List<DeckEntity>
+
+    @Query("SELECT * FROM decks WHERE id = :id")
+    suspend fun getDeck(id: Long): DeckEntity?
+
+    @Insert
+    suspend fun insertDeck(deck: DeckEntity): Long
+
+    @Update
+    suspend fun updateDeck(deck: DeckEntity)
+
+    @Query("SELECT * FROM notes WHERE deck_id = :deckId ORDER BY updated_at DESC")
+    suspend fun listNotes(deckId: Long): List<NoteEntity>
+
+    @Query("SELECT * FROM notes WHERE id = :id")
+    suspend fun getNote(id: Long): NoteEntity?
+
+    @Insert
+    suspend fun insertNote(note: NoteEntity): Long
+
+    @Update
+    suspend fun updateNote(note: NoteEntity)
+
+    @Insert
+    suspend fun insertCard(card: CardEntity): Long
+
+    @Query("SELECT * FROM cards WHERE id = :id")
+    suspend fun getCard(id: Long): CardEntity?
+
+    @Query("SELECT * FROM cards WHERE note_id = :noteId LIMIT 1")
+    suspend fun getCardByNote(noteId: Long): CardEntity?
+
+    @Update
+    suspend fun updateCard(card: CardEntity)
+
+    @Insert
+    suspend fun insertReviewLog(log: ReviewLogEntity): Long
+
+    @Query(
+        """
+        UPDATE cards
+        SET due = :due, interval = 0, ease_factor = 2.5, repetitions = 0, lapses = 0,
+            queue = 'new', updated_at = :updatedAt
+        WHERE note_id IN (SELECT id FROM notes WHERE deck_id = :deckId)
+        """,
+    )
+    suspend fun resetDeckCards(deckId: Long, due: Long, updatedAt: Long)
+
+    @Query(
+        """
+        DELETE FROM review_log
+        WHERE card_id IN (
+          SELECT c.id FROM cards c JOIN notes n ON n.id = c.note_id WHERE n.deck_id = :deckId
+        )
+        """,
+    )
+    suspend fun clearDeckReviewLog(deckId: Long)
+
+    @Query(
+        """
+        SELECT c.queue AS queue, c.due AS due, COUNT(*) AS count
+        FROM cards c
+        JOIN notes n ON n.id = c.note_id
+        WHERE n.deck_id = :deckId
+        GROUP BY c.queue, c.due
+        """,
+    )
+    suspend fun deckQueueDueCounts(deckId: Long): List<QueueDueCount>
+
+    @Query(
+        """
+        SELECT c.id, c.note_id, c.due, c.interval, c.ease_factor, c.repetitions, c.lapses, c.queue,
+               c.created_at, c.updated_at,
+               n.id AS n_id, n.deck_id, n.fields_json, n.created_at AS n_created_at, n.updated_at AS n_updated_at
+        FROM cards c
+        JOIN notes n ON n.id = c.note_id
+        WHERE n.deck_id = :deckId
+          AND (
+            c.queue = 'new'
+            OR c.due <= :endOfDay
+            OR (:inStudyWindow = 1 AND c.repetitions < :minRepetitions)
+          )
+        ORDER BY
+          CASE c.queue WHEN 'learning' THEN 0 WHEN 'review' THEN 1 WHEN 'new' THEN 2 ELSE 3 END,
+          c.due ASC
+        LIMIT :limit
+        """,
+    )
+    suspend fun getDueCards(
+        deckId: Long,
+        endOfDay: Long,
+        inStudyWindow: Int,
+        minRepetitions: Int,
+        limit: Int,
+    ): List<CardNoteRow>
+
+    @Query("SELECT * FROM app_settings WHERE `key` IN ('ui.theme', 'ui.fontScale')")
+    suspend fun getUiSettingsRows(): List<AppSettingEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertSetting(setting: AppSettingEntity)
+}
+
+@Database(
+    entities = [
+        DeckEntity::class,
+        NoteEntity::class,
+        CardEntity::class,
+        ReviewLogEntity::class,
+        AppSettingEntity::class,
+    ],
+    version = 1,
+    exportSchema = false,
+)
+abstract class MemoDatabase : RoomDatabase() {
+    abstract fun dao(): MemoDao
+}
