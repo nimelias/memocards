@@ -7,7 +7,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.FilterChip
@@ -38,9 +40,14 @@ fun SettingsScreen(
         Modifier
             .fillMaxSize()
             .background(palette.background)
-            .padding(16.dp),
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(horizontal = 20.dp, vertical = 16.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Volver", tint = palette.text)
             }
@@ -55,7 +62,9 @@ fun SettingsScreen(
         Spacer(Modifier.height(20.dp))
         Text("Tema", fontWeight = FontWeight.SemiBold, color = palette.text, fontSize = scaledSp(15f))
         Spacer(Modifier.height(8.dp))
-        Row {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+        ) {
             ThemeName.entries.forEach { theme ->
                 FilterChip(
                     selected = settings.theme == theme,
@@ -69,7 +78,9 @@ fun SettingsScreen(
                             },
                         )
                     },
-                    modifier = Modifier.padding(end = 8.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 8.dp),
                 )
             }
         }
