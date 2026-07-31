@@ -287,6 +287,11 @@ private fun RatingArcMenu(
         fontSize = scaledSp(11f),
         fontWeight = FontWeight.Bold,
     )
+    val hubStyle = TextStyle(
+        color = Color.White.copy(alpha = 0.92f),
+        fontSize = scaledSp(10f),
+        fontWeight = FontWeight.SemiBold,
+    )
 
     /** Ángulo matemático (Y hacia arriba): 0 = derecha, π/2 = arriba. */
     fun mathAngle(x: Float, y: Float, pivotX: Float, pivotY: Float): Float =
@@ -345,8 +350,9 @@ private fun RatingArcMenu(
                                     val pivotX = if (right) size.width.toFloat() else 0f
                                     val pivotY = size.height.toFloat()
                                     val dist = hypot(offset.x - pivotX, offset.y - pivotY)
-                                    val outer = size.minDimension * 0.98f
-                                    val inner = size.minDimension * 0.26f
+                                    val minSide = minOf(size.width, size.height).toFloat()
+                                    val outer = minSide * 0.98f
+                                    val inner = minSide * 0.26f
                                     if (dist in inner..outer) {
                                         val idx = sectorIndex(mathAngle(offset.x, offset.y, pivotX, pivotY))
                                         if (idx in RATINGS.indices) {
@@ -415,14 +421,7 @@ private fun RatingArcMenu(
                             radius = innerR * 0.9f,
                             center = pivot,
                         )
-                        val hub = textMeasurer.measure(
-                            "Dificultad",
-                            TextStyle(
-                                color = Color.White.copy(alpha = 0.92f),
-                                fontSize = scaledSp(10f),
-                                fontWeight = FontWeight.SemiBold,
-                            ),
-                        )
+                        val hub = textMeasurer.measure("Dificultad", hubStyle)
                         drawText(
                             hub,
                             topLeft = Offset(
