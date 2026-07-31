@@ -239,7 +239,38 @@ class MemoRepository(private val dao: MemoDao) {
         return next
     }
 
+    /** Primera instalación vacía: mazo «Trivial» con preguntas tipo trivial. */
+    suspend fun ensureDemoDeckIfNeeded() {
+        val already = dao.getUiSettingsRows().any { it.key == DEMO_SEEDED_KEY }
+        if (already) return
+        if (listDecks().isNotEmpty()) {
+            dao.upsertSetting(AppSettingEntity(DEMO_SEEDED_KEY, "1"))
+            return
+        }
+        val deck = createDeck("Trivial")
+        for ((front, back) in TRIVIAL_CARDS) {
+            createNote(deck.id, NoteFields(front = front, back = back))
+        }
+        dao.upsertSetting(AppSettingEntity(DEMO_SEEDED_KEY, "1"))
+    }
+
     companion object {
         private const val MS_PER_DAY = 86_400_000L
+        private const val DEMO_SEEDED_KEY = "demo.seeded"
+
+        private val TRIVIAL_CARDS = listOf(
+            "¿Cuál es la capital de Francia?" to "París",
+            "¿En qué continente está Egipto?" to "África",
+            "¿Quién escribió Don Quijote?" to "Miguel de Cervantes",
+            "¿Cuántos lados tiene un hexágono?" to "Seis",
+            "¿Cuál es el planeta más cercano al Sol?" to "Mercurio",
+            "¿En qué año llegó el hombre a la Luna?" to "1969",
+            "¿Cuál es el río más largo del mundo?" to "El Nilo (o el Amazonas, según criterio)",
+            "¿Quién pintó la Mona Lisa?" to "Leonardo da Vinci",
+            "¿Cuál es el símbolo químico del oro?" to "Au",
+            "¿Cuántos jugadores tiene un equipo de fútbol en el campo?" to "Once",
+            "¿Cuál es la montaña más alta del mundo?" to "El Everest",
+            "¿En qué país nació Mozart?" to "Austria (Salzburgo)",
+        )
     }
 }

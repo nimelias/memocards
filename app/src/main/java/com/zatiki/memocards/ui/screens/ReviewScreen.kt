@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -12,8 +13,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -43,7 +44,6 @@ import com.zatiki.memocards.ui.theme.scaledSp
 import kotlinx.coroutines.launch
 
 private data class RatingUi(val rating: ReviewRating, val label: String, val color: Color)
-private enum class CardSide { FRONT, BACK }
 
 private val RATINGS = listOf(
     RatingUi(1, "Otra vez", Color(0xFFDC2626)),
@@ -63,7 +63,7 @@ fun ReviewScreen(
     val scope = rememberCoroutineScope()
     var queue by remember { mutableStateOf<List<CardWithNote>>(emptyList()) }
     var index by remember { mutableIntStateOf(0) }
-    var focusedSide by remember { mutableStateOf(CardSide.FRONT) }
+    var revealed by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
     var finished by remember { mutableStateOf(false) }
 
@@ -71,12 +71,20 @@ fun ReviewScreen(
         loading = true
         queue = repo.getDueCards(deckId, 50)
         index = 0
-        focusedSide = CardSide.FRONT
+        revealed = false
         finished = queue.isEmpty()
         loading = false
     }
 
+    LaunchedEffect(index) {
+        revealed = false
+    }
+
     val current = queue.getOrNull(index)
+
+    fun revealBack() {
+        revealed = true
+    }
 
     Column(
         Modifier
@@ -112,56 +120,76 @@ fun ReviewScreen(
                     Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .pointerInput(Unit) {
+                        .pointerInput(revealed, index) {
                             detectHorizontalDragGestures { _, dragAmount ->
-                                if (dragAmount > 36f) focusedSide = CardSide.FRONT
-                                if (dragAmount < -36f) focusedSide = CardSide.BACK
+                                if (!revealed && dragAmount < -36f) revealBack()
                             }
                         },
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     CardFacePanel(
                         title = "Anverso",
                         text = current.note.fields.front.ifBlank { "—" },
-                        focused = focusedSide == CardSide.FRONT,
-                        onFocus = { focusedSide = CardSide.FRONT },
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    CardFacePanel(
-                        title = "Reverso",
-                        text = current.note.fields.back.ifBlank { "—" },
-                        focused = focusedSide == CardSide.BACK,
-                        onFocus = { focusedSide = CardSide.BACK },
-                    )
-                }
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    "Desliza horizontalmente o toca un panel para cambiar el foco.",
-                    color = palette.muted,
-                    fontSize = scaledSp(12f),
-                )
-                Spacer(Modifier.height(10.dp))
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    RATINGS.forEach { item ->
-                        Button(
-                            onClick = {
-                                scope.launch {
-                                    repo.reviewCard(current.card.id, item.rating)
-                                    if (index + 1 >= queue.size) {
-                                        finished = true
-                                    } else {
-                                        index += 1
-                                        focusedSide = CardSide.FRONT
-                                    }
-                                }
+                        accent = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .clickable {
+                                if (!revealed) revealBack()
                             },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(containerColor = item.color),
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 12.dp),
-                        ) {
-                            Text(item.label, fontSize = scaledSp(12f))
+                    )
+                    if (revealed) {
+                        CardFacePanel(
+                            title = "Reverso",
+                            text = current.note.fields.back.ifBlank { "—" },
+                            accent = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                        )
+                    } else {
+                        // Reserva la mitad inferior vacía: el anverso ocupa ~media pantalla.
+                        Box(Modifier.weight(1f).fillMaxWidth())
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                if (!revealed) {
+                    Text(
+                        "Toca la carta o desliza a la izquierda para ver el reverso.",
+                        color = palette.muted,
+                        fontSize = scaledSp(12f),
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Button(
+                        onClick = { revealBack() },
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(vertical = 14.dp),
+                    ) {
+                        Text("Mostrar respuesta", fontSize = scaledSp(15f))
+                    }
+                } else {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        RATINGS.forEach { item ->
+                            Button(
+                                onClick = {
+                                    scope.launch {
+                                        repo.reviewCard(current.card.id, item.rating)
+                                        if (index + 1 >= queue.size) {
+                                            finished = true
+                                        } else {
+                                            index += 1
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = item.color),
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 12.dp),
+                            ) {
+                                Text(item.label, fontSize = scaledSp(12f))
+                            }
                         }
                     }
                 }
@@ -174,24 +202,22 @@ fun ReviewScreen(
 private fun CardFacePanel(
     title: String,
     text: String,
-    focused: Boolean,
-    onFocus: () -> Unit,
+    accent: Boolean,
+    modifier: Modifier = Modifier,
 ) {
     val palette = LocalMemoPalette.current
-    val borderColor = if (focused) palette.primary else palette.border
+    val borderColor = if (accent) palette.primary else palette.border
 
     Column(
-        Modifier
-            .fillMaxWidth()
+        modifier
             .border(1.dp, borderColor, RoundedCornerShape(16.dp))
             .background(palette.card, RoundedCornerShape(16.dp))
-            .clickable(onClick = onFocus)
             .padding(18.dp)
             .verticalScroll(rememberScrollState()),
     ) {
         Text(
             title,
-            color = if (focused) palette.primary else palette.muted,
+            color = if (accent) palette.primary else palette.muted,
             fontSize = scaledSp(12f),
             fontWeight = FontWeight.SemiBold,
         )
@@ -199,7 +225,7 @@ private fun CardFacePanel(
         Text(
             text,
             color = palette.text,
-            fontSize = scaledSp(if (focused) 21f else 19f),
+            fontSize = scaledSp(21f),
         )
     }
 }
