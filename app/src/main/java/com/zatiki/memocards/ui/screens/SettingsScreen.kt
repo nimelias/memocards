@@ -1,6 +1,7 @@
 package com.zatiki.memocards.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,6 +11,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.FilterChip
@@ -22,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.zatiki.memocards.domain.RatingLayout
 import com.zatiki.memocards.domain.ThemeName
 import com.zatiki.memocards.domain.UiSettings
 import com.zatiki.memocards.ui.theme.LocalMemoPalette
@@ -33,6 +37,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onThemeChange: (ThemeName) -> Unit,
     onFontScaleChange: (Float) -> Unit,
+    onRatingLayoutChange: (RatingLayout) -> Unit,
 ) {
     val palette = LocalMemoPalette.current
 
@@ -42,7 +47,8 @@ fun SettingsScreen(
             .background(palette.background)
             .statusBarsPadding()
             .navigationBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 16.dp),
+            .padding(horizontal = 20.dp, vertical = 16.dp)
+            .verticalScroll(rememberScrollState()),
     ) {
         Row(
             Modifier.fillMaxWidth(),
@@ -98,6 +104,39 @@ fun SettingsScreen(
             valueRange = 0.9f..1.4f,
             modifier = Modifier.fillMaxWidth(),
         )
+
+        Spacer(Modifier.height(24.dp))
+        Text(
+            "Botones de dificultad",
+            fontWeight = FontWeight.SemiBold,
+            color = palette.text,
+            fontSize = scaledSp(15f),
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Barra inferior o menú en arco (esquina).",
+            color = palette.muted,
+            fontSize = scaledSp(12f),
+        )
+        Spacer(Modifier.height(8.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            RatingLayout.entries.forEach { layout ->
+                FilterChip(
+                    selected = settings.ratingLayout == layout,
+                    onClick = { onRatingLayoutChange(layout) },
+                    label = {
+                        Text(
+                            when (layout) {
+                                RatingLayout.BAR -> "Barra de botones"
+                                RatingLayout.ARC_RIGHT -> "Arco inferior derecho"
+                                RatingLayout.ARC_LEFT -> "Arco inferior izquierdo"
+                            },
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
 
         Spacer(Modifier.height(24.dp))
         Text(

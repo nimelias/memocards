@@ -8,6 +8,7 @@ import com.zatiki.memocards.domain.DeckSettings
 import com.zatiki.memocards.domain.DeckStats
 import com.zatiki.memocards.domain.Note
 import com.zatiki.memocards.domain.NoteFields
+import com.zatiki.memocards.domain.RatingLayout
 import com.zatiki.memocards.domain.ReviewRating
 import com.zatiki.memocards.domain.Sm2
 import com.zatiki.memocards.domain.ThemeName
@@ -230,12 +231,14 @@ class MemoRepository(private val dao: MemoDao) {
         val map = dao.getUiSettingsRows().associate { it.key to it.value }
         val theme = ThemeName.from(map["ui.theme"])
         val font = map["ui.fontScale"]?.toFloatOrNull()?.coerceIn(0.9f, 1.4f) ?: 1f
-        return UiSettings(theme = theme, fontScale = font)
+        val ratingLayout = RatingLayout.from(map["ui.ratingLayout"])
+        return UiSettings(theme = theme, fontScale = font, ratingLayout = ratingLayout)
     }
 
     suspend fun saveUiSettings(next: UiSettings): UiSettings {
         dao.upsertSetting(AppSettingEntity("ui.theme", next.theme.value))
         dao.upsertSetting(AppSettingEntity("ui.fontScale", next.fontScale.toString()))
+        dao.upsertSetting(AppSettingEntity("ui.ratingLayout", next.ratingLayout.value))
         return next
     }
 

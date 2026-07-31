@@ -120,6 +120,7 @@ class MainActivity : ComponentActivity() {
                             repo = repo,
                             deckId = deckId,
                             deckName = deckName,
+                            settings = settings,
                             onDone = { nav.popBackStack() },
                         )
                     }
@@ -137,6 +138,11 @@ class MainActivity : ComponentActivity() {
                                 scope.launch {
                                     val clamped = ((scale * 100).toInt() / 100f).coerceIn(0.9f, 1.4f)
                                     settings = repo.saveUiSettings(settings.copy(fontScale = clamped))
+                                }
+                            },
+                            onRatingLayoutChange = { layout ->
+                                scope.launch {
+                                    settings = repo.saveUiSettings(settings.copy(ratingLayout = layout))
                                 }
                             },
                         )

@@ -72,6 +72,7 @@ data class DeckSettings(
 data class UiSettings(
     val theme: ThemeName = ThemeName.LIGHT,
     val fontScale: Float = 1f,
+    val ratingLayout: RatingLayout = RatingLayout.BAR,
 )
 
 enum class ThemeName(val value: String) {
@@ -82,6 +83,18 @@ enum class ThemeName(val value: String) {
     companion object {
         fun from(value: String?): ThemeName =
             entries.find { it.value == value } ?: LIGHT
+    }
+}
+
+/** Disposición de los botones de calificación en estudio. */
+enum class RatingLayout(val value: String) {
+    BAR("bar"),
+    ARC_RIGHT("arc_right"),
+    ARC_LEFT("arc_left");
+
+    companion object {
+        fun from(value: String?): RatingLayout =
+            entries.find { it.value == value } ?: BAR
     }
 }
 
