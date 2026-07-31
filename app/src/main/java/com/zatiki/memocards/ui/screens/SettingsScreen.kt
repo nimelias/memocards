@@ -114,7 +114,7 @@ fun SettingsScreen(
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            "Barra inferior o menú en arco (esquina).",
+            "Barra inferior o dial radial (FAB + gesto).",
             color = palette.muted,
             fontSize = scaledSp(12f),
         )
