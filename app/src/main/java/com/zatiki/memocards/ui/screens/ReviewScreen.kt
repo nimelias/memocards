@@ -216,10 +216,8 @@ fun ReviewScreen(
                             RatingBar(
                                 onRate = { rating -> advanceAfterRating(current.card.id, rating) },
                             )
-                        } else {
-                            // Reserva altura similar a la barra para que el arco no tape el reverso.
-                            Spacer(Modifier.height(56.dp))
                         }
+                        // Arco: FAB overlay; no reserva espacio en el layout.
                     }
                 }
             }
@@ -260,7 +258,8 @@ private fun RatingBar(onRate: (ReviewRating) -> Unit) {
 }
 
 /**
- * Dial radial tipo LexiCards: FAB flotante; toque abre; arrastre selecciona sector.
+ * Dial radial: FAB flotante (overlay, sin afectar layout).
+ * El arco pivota en el centro del FAB hacia el interior de la pantalla.
  */
 @Composable
 private fun RatingArcMenu(
@@ -279,6 +278,7 @@ private fun RatingArcMenu(
     val density = LocalDensity.current
     val dialSize = 288.dp
     val fabSize = 56.dp
+    val edgePad = 16.dp
     val dialPx = with(density) { dialSize.toPx() }
     val fabPx = with(density) { fabSize.toPx() }
     val textMeasurer = rememberTextMeasurer()
@@ -287,26 +287,20 @@ private fun RatingArcMenu(
         fontSize = scaledSp(11f),
         fontWeight = FontWeight.Bold,
     )
-    val hubStyle = TextStyle(
-        color = Color.White.copy(alpha = 0.92f),
-        fontSize = scaledSp(10f),
-        fontWeight = FontWeight.SemiBold,
-    )
 
-    /** Ángulo matemático (Y hacia arriba): 0 = derecha, π/2 = arriba. */
+    /** Ángulo matemático (Y↑): 0 = derecha, π/2 = arriba. */
     fun mathAngle(x: Float, y: Float, pivotX: Float, pivotY: Float): Float =
         atan2(-(y - pivotY), x - pivotX)
 
     fun sectorIndex(angle: Float): Int {
         if (right) {
-            // Cuadrante π/2 (arriba) … π (izquierda)
+            // π/2 (arriba) … π (izquierda) — cuadrante hacia el interior
             var a = angle
             if (a < 0f) a += (2f * PI).toFloat()
             if (a < PI.toFloat() / 2f || a > PI.toFloat()) return -1
             val t = (a - PI.toFloat() / 2f) / (PI.toFloat() / 2f)
             return (3 - (t * 4f).toInt().coerceIn(0, 3)).coerceIn(0, 3)
         }
-        // Cuadrante 0 (derecha) … π/2 (arriba)
         if (angle < 0f || angle > PI.toFloat() / 2f) return -1
         val t = angle / (PI.toFloat() / 2f)
         return (t * 4f).toInt().coerceIn(0, 3)
@@ -318,6 +312,12 @@ private fun RatingArcMenu(
         expanded = false
         highlightIndex = -1
     }
+
+    // Pivot = centro del FAB dentro del dial (esquina inferior).
+    val pivotInDial = Offset(
+        x = if (right) dialPx - fabPx / 2f else fabPx / 2f,
+        y = dialPx - fabPx / 2f,
+    )
 
     Box(Modifier.fillMaxSize()) {
         if (expandProgress > 0.01f) {
@@ -337,7 +337,7 @@ private fun RatingArcMenu(
         Box(
             Modifier
                 .fillMaxSize()
-                .padding(16.dp),
+                .padding(edgePad),
             contentAlignment = if (right) Alignment.BottomEnd else Alignment.BottomStart,
         ) {
             Box(Modifier.size(dialSize)) {
@@ -345,16 +345,15 @@ private fun RatingArcMenu(
                     Canvas(
                         Modifier
                             .fillMaxSize()
-                            .pointerInput(right) {
+                            .pointerInput(right, pivotInDial) {
                                 detectTapGestures { offset ->
-                                    val pivotX = if (right) size.width.toFloat() else 0f
-                                    val pivotY = size.height.toFloat()
-                                    val dist = hypot(offset.x - pivotX, offset.y - pivotY)
-                                    val minSide = minOf(size.width, size.height).toFloat()
-                                    val outer = minSide * 0.98f
-                                    val inner = minSide * 0.26f
+                                    val dist = hypot(offset.x - pivotInDial.x, offset.y - pivotInDial.y)
+                                    val outer = dialPx * 0.92f
+                                    val inner = fabPx * 0.55f
                                     if (dist in inner..outer) {
-                                        val idx = sectorIndex(mathAngle(offset.x, offset.y, pivotX, pivotY))
+                                        val idx = sectorIndex(
+                                            mathAngle(offset.x, offset.y, pivotInDial.x, pivotInDial.y),
+                                        )
                                         if (idx in RATINGS.indices) {
                                             onRate(RATINGS[idx].rating)
                                             expanded = false
@@ -367,12 +366,14 @@ private fun RatingArcMenu(
                                 }
                             },
                     ) {
-                        val pivot = Offset(if (right) size.width else 0f, size.height)
-                        val outerR = size.minDimension * 0.98f * expandProgress
-                        val innerR = size.minDimension * 0.26f * expandProgress
-                        // Compose: 0° = 3 en punto; Y↓. Derecha: 180→90 antihorario. Izquierda: 0→270 antihorario.
+                        val pivot = pivotInDial
+                        val outerR = dialPx * 0.92f * expandProgress
+                        val innerR = fabPx * 0.55f
+                        // Compose: 0° = 3 en punto, sentido horario +.
+                        // Derecha (pivot abajo-der): 180→270 horario = izquierda→arriba (interior).
+                        // Izquierda (pivot abajo-izq): 0→270 antihorario = derecha→arriba (interior).
                         val startAngleDeg = if (right) 180f else 0f
-                        val sweepPer = -90f / RATINGS.size
+                        val sweepPer = (if (right) 90f else -90f) / RATINGS.size
 
                         RATINGS.forEachIndexed { i, item ->
                             val sectorStart = startAngleDeg + i * sweepPer
@@ -415,20 +416,6 @@ private fun RatingArcMenu(
                                 topLeft = Offset(lx - measured.size.width / 2f, ly - measured.size.height / 2f),
                             )
                         }
-
-                        drawCircle(
-                            color = Color(0xFF1E293B).copy(alpha = 0.94f * expandProgress),
-                            radius = innerR * 0.9f,
-                            center = pivot,
-                        )
-                        val hub = textMeasurer.measure("Dificultad", hubStyle)
-                        drawText(
-                            hub,
-                            topLeft = Offset(
-                                if (right) pivot.x - hub.size.width - 10f else pivot.x + 10f,
-                                pivot.y - hub.size.height - 12f,
-                            ),
-                        )
                     }
                 }
 
@@ -447,7 +434,7 @@ private fun RatingArcMenu(
                                 highlightIndex = -1
                             }
                         }
-                        .pointerInput(right) {
+                        .pointerInput(right, pivotInDial) {
                             detectDragGestures(
                                 onDragStart = {
                                     expanded = true
@@ -460,15 +447,13 @@ private fun RatingArcMenu(
                                 },
                                 onDrag = { change, _ ->
                                     change.consume()
-                                    val pivotX = if (right) dialPx else 0f
-                                    val pivotY = dialPx
                                     val fabOriginX = if (right) dialPx - fabPx else 0f
                                     val fabOriginY = dialPx - fabPx
                                     val x = fabOriginX + change.position.x
                                     val y = fabOriginY + change.position.y
-                                    val dist = hypot(x - pivotX, y - pivotY)
-                                    highlightIndex = if (dist > fabPx * 0.7f) {
-                                        sectorIndex(mathAngle(x, y, pivotX, pivotY))
+                                    val dist = hypot(x - pivotInDial.x, y - pivotInDial.y)
+                                    highlightIndex = if (dist > fabPx * 0.55f) {
+                                        sectorIndex(mathAngle(x, y, pivotInDial.x, pivotInDial.y))
                                     } else {
                                         -1
                                     }
