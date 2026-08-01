@@ -319,7 +319,7 @@ private fun RatingArcMenu(
     val totalSweepAbs = 180f
     val sectorSweepAbs = (totalSweepAbs - gapDeg * (RATINGS.size - 1)) / RATINGS.size
     val startAngleDeg = 270f
-    val sweepSign get() = if (arcFromRight) -1f else 1f
+    val sweepSign = if (arcFromRight) -1f else 1f
 
     fun mathAngle(x: Float, y: Float, pivotX: Float, pivotY: Float): Float =
         atan2(-(y - pivotY), x - pivotX)
