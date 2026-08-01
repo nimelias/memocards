@@ -4,7 +4,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -33,6 +32,7 @@ import androidx.compose.material.icons.outlined.ThumbDown
 import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -46,6 +46,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -67,6 +68,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.zatiki.memocards.data.MemoRepository
 import com.zatiki.memocards.domain.CardWithNote
@@ -149,17 +151,6 @@ fun ReviewScreen(
             .statusBarsPadding()
             .navigationBarsPadding(),
     ) {
-        if (!loading && !finished && current != null && !revealed) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .clickable(
-                        indication = null,
-                        interactionSource = revealTapSource,
-                        onClick = { revealBack() },
-                    ),
-            )
-        }
         Column(
             Modifier
                 .fillMaxSize()
@@ -182,39 +173,40 @@ fun ReviewScreen(
                 }
                 else -> {
                     key(current.card.id) {
-                        Text(
-                            "${index + 1} / ${queue.size}",
-                            color = palette.muted,
-                            fontSize = scaledSp(13f),
-                        )
-                        Spacer(Modifier.height(12.dp))
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                deckName,
+                                color = palette.text,
+                                fontSize = scaledSp(20f),
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                "${index + 1} / ${queue.size}",
+                                color = palette.muted,
+                                fontSize = scaledSp(15f),
+                            )
+                        }
+                        Spacer(Modifier.height(16.dp))
                         Column(
                             Modifier
                                 .weight(1f)
-                                .fillMaxWidth()
-                                .pointerInput(revealed, current.card.id) {
-                                    detectHorizontalDragGestures { _, dragAmount ->
-                                        if (!revealed && dragAmount < -36f) revealBack()
-                                    }
-                                },
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                                .fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
                             CardFacePanel(
-                                title = "Anverso",
                                 text = current.note.fields.front.ifBlank { "—" },
-                                accent = true,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .weight(1f)
-                                    .clickable {
-                                        if (!revealed) revealBack()
-                                    },
+                                    .weight(1f),
                             )
                             if (revealed) {
                                 CardFacePanel(
-                                    title = "Reverso",
                                     text = current.note.fields.back.ifBlank { "—" },
-                                    accent = true,
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .weight(1f),
@@ -223,20 +215,25 @@ fun ReviewScreen(
                                 Box(Modifier.weight(1f).fillMaxWidth())
                             }
                         }
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(16.dp))
                         if (!revealed) {
-                            Text(
-                                "Toca la carta o desliza a la izquierda para ver el reverso.",
-                                color = palette.muted,
-                                fontSize = scaledSp(12f),
-                            )
-                            Spacer(Modifier.height(10.dp))
-                            Button(
-                                onClick = { revealBack() },
-                                modifier = Modifier.fillMaxWidth(),
-                                contentPadding = PaddingValues(vertical = 14.dp),
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .shadow(6.dp, RoundedCornerShape(28.dp)),
+                                shape = RoundedCornerShape(28.dp),
+                                color = palette.card,
                             ) {
-                                Text("Mostrar respuesta", fontSize = scaledSp(15f))
+                                Text(
+                                    "Mostrar respuesta",
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 16.dp),
+                                    textAlign = TextAlign.Center,
+                                    fontSize = scaledSp(16f),
+                                    fontWeight = FontWeight.Medium,
+                                    color = palette.text,
+                                )
                             }
                         } else if (settings.ratingLayout == RatingLayout.BAR) {
                             RatingBar(
@@ -247,6 +244,23 @@ fun ReviewScreen(
                     }
                 }
             }
+        }
+
+        if (!loading && !finished && current != null && !revealed) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectHorizontalDragGestures { _, dragAmount ->
+                            if (dragAmount < -36f) revealBack()
+                        }
+                    }
+                    .clickable(
+                        indication = null,
+                        interactionSource = revealTapSource,
+                        onClick = { revealBack() },
+                    ),
+            )
         }
 
         if (
@@ -560,32 +574,28 @@ private fun RatingArcMenu(
 
 @Composable
 private fun CardFacePanel(
-    title: String,
     text: String,
-    accent: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val palette = LocalMemoPalette.current
-    val borderColor = if (accent) palette.primary else palette.border
+    val shape = RoundedCornerShape(20.dp)
 
     Column(
         modifier
-            .border(1.dp, borderColor, RoundedCornerShape(16.dp))
-            .background(palette.card, RoundedCornerShape(16.dp))
-            .padding(18.dp)
+            .shadow(8.dp, shape, clip = false)
+            .background(palette.card, shape)
+            .padding(horizontal = 24.dp, vertical = 28.dp)
             .verticalScroll(rememberScrollState()),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
     ) {
-        Text(
-            title,
-            color = if (accent) palette.primary else palette.muted,
-            fontSize = scaledSp(12f),
-            fontWeight = FontWeight.SemiBold,
-        )
-        Spacer(Modifier.height(10.dp))
         Text(
             text,
             color = palette.text,
-            fontSize = scaledSp(21f),
+            fontSize = scaledSp(22f),
+            fontWeight = FontWeight.Normal,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
         )
     }
 }

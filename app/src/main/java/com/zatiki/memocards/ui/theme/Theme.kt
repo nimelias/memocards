@@ -23,12 +23,12 @@ data class MemoPalette(
 
 val LocalMemoPalette = staticCompositionLocalOf {
     MemoPalette(
-        background = Color(0xFFF8FAFC),
+        background = Color(0xFFE8E8E8),
         card = Color.White,
-        text = Color(0xFF0F172A),
-        muted = Color(0xFF64748B),
-        border = Color(0xFFE2E8F0),
-        primary = Color(0xFF2563EB),
+        text = Color(0xFF1C1C1E),
+        muted = Color(0xFF8E8E93),
+        border = Color(0xFFE5E5EA),
+        primary = Color(0xFF007AFF),
     )
 }
 
@@ -36,12 +36,12 @@ val LocalFontScale = staticCompositionLocalOf { 1f }
 
 fun paletteFor(theme: ThemeName): MemoPalette = when (theme) {
     ThemeName.LIGHT -> MemoPalette(
-        background = Color(0xFFF8FAFC),
+        background = Color(0xFFE8E8E8),
         card = Color.White,
-        text = Color(0xFF0F172A),
-        muted = Color(0xFF64748B),
-        border = Color(0xFFE2E8F0),
-        primary = Color(0xFF2563EB),
+        text = Color(0xFF1C1C1E),
+        muted = Color(0xFF8E8E93),
+        border = Color(0xFFE5E5EA),
+        primary = Color(0xFF007AFF),
     )
     ThemeName.DARK -> MemoPalette(
         background = Color(0xFF0B1220),
