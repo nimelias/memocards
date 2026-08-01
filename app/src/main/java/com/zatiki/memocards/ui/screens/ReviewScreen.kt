@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -55,6 +54,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -62,7 +62,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.zatiki.memocards.data.MemoRepository
 import com.zatiki.memocards.domain.CardWithNote
@@ -268,8 +267,8 @@ private fun RatingBar(onRate: (ReviewRating) -> Unit) {
 }
 
 /**
- * Dial radial 180°: laterales o FAB abren el menú.
- * Semicírculo con gaps, padding central e iconos/letras blancos.
+ * Abanico semicircular 180° anclado al lateral (como la referencia).
+ * Laterales o FAB abren; textos bold alineados radialmente.
  */
 @Composable
 private fun RatingArcMenu(
@@ -286,42 +285,35 @@ private fun RatingArcMenu(
         label = "arcExpand",
     )
     val density = LocalDensity.current
-    val dialSize = 320.dp
     val fabSize = 56.dp
-    val edgePad = 16.dp
-    val dialPx = with(density) { dialSize.toPx() }
+    val edgePad = 12.dp
     val fabPx = with(density) { fabSize.toPx() }
     val textMeasurer = rememberTextMeasurer()
     val labelStyle = TextStyle(
         color = Color.White,
-        fontSize = scaledSp(11f),
+        fontSize = scaledSp(13f),
         fontWeight = FontWeight.Bold,
     )
-    val gapDeg = 5f
+    val gapDeg = 4f
     val totalSweepAbs = 180f
     val sectorSweepAbs = (totalSweepAbs - gapDeg * (RATINGS.size - 1)) / RATINGS.size
-    val sweepSign = if (right) 1f else -1f
-    val startAngleDeg = if (right) 180f else 0f
-    val outerRFull = dialPx * 0.95f
-    val innerR = dialPx * 0.32f
+    val startAngleDeg = 270f
+    val sweepSign = if (right) -1f else 1f
 
     fun mathAngle(x: Float, y: Float, pivotX: Float, pivotY: Float): Float =
         atan2(-(y - pivotY), x - pivotX)
 
     fun sectorIndex(angle: Float): Int {
         var a = angle
-        if (a < 0f) a += (2f * PI).toFloat()
-        // Semicírculo superior: 0 (derecha) … π (izquierda)
-        if (a > PI.toFloat()) return -1
-        return if (right) {
-            // De izquierda (π) a derecha (0)
-            val t = ((PI.toFloat() - a) / PI.toFloat()).coerceIn(0f, 0.999f)
-            (t * RATINGS.size).toInt().coerceIn(0, RATINGS.lastIndex)
-        } else {
-            // De derecha (0) a izquierda (π)
-            val t = (a / PI.toFloat()).coerceIn(0f, 0.999f)
-            (t * RATINGS.size).toInt().coerceIn(0, RATINGS.lastIndex)
+        if (right) {
+            if (a < 0f) a += (2f * PI).toFloat()
+            if (a < PI.toFloat() / 2f || a > 3f * PI.toFloat() / 2f) return -1
+            val t = ((a - PI.toFloat() / 2f) / PI.toFloat()).coerceIn(0f, 0.999f)
+            return (RATINGS.lastIndex - (t * RATINGS.size).toInt()).coerceIn(0, RATINGS.lastIndex)
         }
+        if (a > PI.toFloat() / 2f || a < -PI.toFloat() / 2f) return -1
+        val t = ((PI.toFloat() / 2f - a) / PI.toFloat()).coerceIn(0f, 0.999f)
+        return (RATINGS.lastIndex - (t * RATINGS.size).toInt()).coerceIn(0, RATINGS.lastIndex)
     }
 
     fun commitHighlight() {
@@ -331,32 +323,12 @@ private fun RatingArcMenu(
         highlightIndex = -1
     }
 
-    val pivotInDial = Offset(
-        x = if (right) dialPx - fabPx / 2f else fabPx / 2f,
-        y = dialPx - fabPx / 2f,
-    )
-
-    val labelPositions = remember(right, dialPx, fabPx, expandProgress) {
-        val outerR = outerRFull * expandProgress.coerceAtLeast(0.01f)
-        RATINGS.mapIndexed { i, _ ->
-            val sectorStart = startAngleDeg + sweepSign * i * (sectorSweepAbs + gapDeg)
-            val midDeg = sectorStart + sweepSign * sectorSweepAbs / 2f
-            val midRad = Math.toRadians(midDeg.toDouble())
-            val labelR = (innerR + outerR) / 2f
-            Offset(
-                pivotInDial.x + cos(midRad).toFloat() * labelR,
-                pivotInDial.y + sin(midRad).toFloat() * labelR,
-            )
-        }
-    }
-
     Box(Modifier.fillMaxSize()) {
-        // Laterales: tap abre el menú (carta ya revelada).
         if (!expanded) {
             Row(Modifier.fillMaxSize()) {
                 Box(
                     Modifier
-                        .width(48.dp)
+                        .width(56.dp)
                         .fillMaxHeight()
                         .clickable {
                             expanded = true
@@ -366,7 +338,7 @@ private fun RatingArcMenu(
                 Spacer(Modifier.weight(1f))
                 Box(
                     Modifier
-                        .width(48.dp)
+                        .width(56.dp)
                         .fillMaxHeight()
                         .clickable {
                             expanded = true
@@ -380,7 +352,7 @@ private fun RatingArcMenu(
             Box(
                 Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.32f * expandProgress))
+                    .background(Color.Black.copy(alpha = 0.28f * expandProgress))
                     .pointerInput(Unit) {
                         detectTapGestures {
                             expanded = false
@@ -390,162 +362,143 @@ private fun RatingArcMenu(
             )
         }
 
+        if (expandProgress > 0.01f) {
+            Canvas(
+                Modifier
+                    .fillMaxSize()
+                    .padding(edgePad)
+                    .pointerInput(right) {
+                        detectTapGestures { offset ->
+                            val w = size.width.toFloat()
+                            val h = size.height.toFloat()
+                            val pivot = Offset(if (right) w else 0f, h / 2f)
+                            val outerFull = minOf(w, h) * 0.92f
+                            val inner = outerFull * 0.28f
+                            val dist = hypot(offset.x - pivot.x, offset.y - pivot.y)
+                            if (dist in inner..outerFull) {
+                                val idx = sectorIndex(mathAngle(offset.x, offset.y, pivot.x, pivot.y))
+                                if (idx in RATINGS.indices) {
+                                    onRate(RATINGS[idx].rating)
+                                    expanded = false
+                                    highlightIndex = -1
+                                    return@detectTapGestures
+                                }
+                            }
+                            expanded = false
+                            highlightIndex = -1
+                        }
+                    },
+            ) {
+                val pivot = Offset(if (right) size.width else 0f, size.height / 2f)
+                val outerFull = minOf(size.width, size.height) * 0.92f
+                val outerR = outerFull * expandProgress
+                val innerR = outerFull * 0.28f
+
+                drawCircle(
+                    color = Color.Black.copy(alpha = 0.18f * expandProgress),
+                    radius = innerR * 0.9f,
+                    center = pivot,
+                )
+
+                RATINGS.forEachIndexed { i, item ->
+                    val visualIndex = RATINGS.lastIndex - i
+                    val sectorStart = startAngleDeg + sweepSign * visualIndex * (sectorSweepAbs + gapDeg)
+                    val sweep = sweepSign * sectorSweepAbs
+                    val path = Path().apply {
+                        val startRad = Math.toRadians(sectorStart.toDouble())
+                        moveTo(
+                            pivot.x + cos(startRad).toFloat() * innerR,
+                            pivot.y + sin(startRad).toFloat() * innerR,
+                        )
+                        arcTo(
+                            Rect(pivot.x - outerR, pivot.y - outerR, pivot.x + outerR, pivot.y + outerR),
+                            sectorStart,
+                            sweep,
+                            false,
+                        )
+                        arcTo(
+                            Rect(pivot.x - innerR, pivot.y - innerR, pivot.x + innerR, pivot.y + innerR),
+                            sectorStart + sweep,
+                            -sweep,
+                            false,
+                        )
+                        close()
+                    }
+                    val lit = highlightIndex == i
+                    drawPath(path, item.color.copy(alpha = (if (lit) 1f else 0.9f) * expandProgress))
+                    if (lit) {
+                        drawPath(path, Color.White.copy(alpha = 0.4f * expandProgress), style = Stroke(4f))
+                    }
+
+                    val midDeg = sectorStart + sweep / 2f
+                    val midRad = Math.toRadians(midDeg.toDouble())
+                    val labelR = (innerR + outerR) / 2f
+                    val lx = pivot.x + cos(midRad).toFloat() * labelR
+                    val ly = pivot.y + sin(midRad).toFloat() * labelR
+                    val measured = textMeasurer.measure(item.label.uppercase(), labelStyle)
+                    val textRotation = midDeg + if (right) 180f else 0f
+                    rotate(degrees = textRotation, pivot = Offset(lx, ly)) {
+                        drawText(
+                            measured,
+                            topLeft = Offset(
+                                lx - measured.size.width / 2f,
+                                ly - measured.size.height / 2f,
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+
         Box(
             Modifier
                 .fillMaxSize()
                 .padding(edgePad),
             contentAlignment = if (right) Alignment.BottomEnd else Alignment.BottomStart,
         ) {
-            Box(Modifier.size(dialSize)) {
-                if (expandProgress > 0.01f) {
-                    Canvas(
-                        Modifier
-                            .fillMaxSize()
-                            .pointerInput(right, pivotInDial) {
-                                detectTapGestures { offset ->
-                                    val dist = hypot(offset.x - pivotInDial.x, offset.y - pivotInDial.y)
-                                    val outer = outerRFull
-                                    if (dist in innerR..outer) {
-                                        val idx = sectorIndex(
-                                            mathAngle(offset.x, offset.y, pivotInDial.x, pivotInDial.y),
-                                        )
-                                        if (idx in RATINGS.indices) {
-                                            onRate(RATINGS[idx].rating)
-                                            expanded = false
-                                            highlightIndex = -1
-                                            return@detectTapGestures
-                                        }
-                                    }
-                                    expanded = false
-                                    highlightIndex = -1
+            Box(
+                Modifier
+                    .size(fabSize)
+                    .background(if (expanded) palette.primary else palette.card, CircleShape)
+                    .border(1.dp, palette.border, CircleShape)
+                    .pointerInput(right) {
+                        detectTapGestures {
+                            expanded = !expanded
+                            highlightIndex = -1
+                        }
+                    }
+                    .pointerInput(right) {
+                        detectDragGestures(
+                            onDragStart = {
+                                expanded = true
+                                highlightIndex = -1
+                            },
+                            onDragEnd = { commitHighlight() },
+                            onDragCancel = {
+                                expanded = false
+                                highlightIndex = -1
+                            },
+                            onDrag = { change, _ ->
+                                change.consume()
+                                val dy = change.position.y - fabPx / 2f
+                                val dx = change.position.x - fabPx / 2f
+                                val score = if (right) -dx - dy else dx - dy
+                                highlightIndex = when {
+                                    score > fabPx * 1.4f -> 3
+                                    score > fabPx * 0.7f -> 2
+                                    score > 0f -> 1
+                                    else -> 0
                                 }
                             },
-                    ) {
-                        val pivot = pivotInDial
-                        val outerR = outerRFull * expandProgress
-
-                        // Disco central de padding (hueco visual).
-                        drawCircle(
-                            color = Color.Black.copy(alpha = 0.2f * expandProgress),
-                            radius = innerR * 0.92f,
-                            center = pivot,
                         )
-
-                        RATINGS.forEachIndexed { i, item ->
-                            val sectorStart = startAngleDeg + sweepSign * i * (sectorSweepAbs + gapDeg)
-                            val sweep = sweepSign * sectorSweepAbs
-                            val path = Path().apply {
-                                val startRad = Math.toRadians(sectorStart.toDouble())
-                                moveTo(
-                                    pivot.x + cos(startRad).toFloat() * innerR,
-                                    pivot.y + sin(startRad).toFloat() * innerR,
-                                )
-                                arcTo(
-                                    Rect(pivot.x - outerR, pivot.y - outerR, pivot.x + outerR, pivot.y + outerR),
-                                    sectorStart,
-                                    sweep,
-                                    false,
-                                )
-                                arcTo(
-                                    Rect(pivot.x - innerR, pivot.y - innerR, pivot.x + innerR, pivot.y + innerR),
-                                    sectorStart + sweep,
-                                    -sweep,
-                                    false,
-                                )
-                                close()
-                            }
-                            val lit = highlightIndex == i
-                            drawPath(
-                                path,
-                                item.color.copy(alpha = (if (lit) 1f else 0.88f) * expandProgress),
-                            )
-                            if (lit) {
-                                drawPath(path, Color.White.copy(alpha = 0.45f * expandProgress), style = Stroke(4f))
-                            }
-                            val midDeg = sectorStart + sweep / 2f
-                            val midRad = Math.toRadians(midDeg.toDouble())
-                            val labelR = (innerR + outerR) / 2f
-                            val lx = pivot.x + cos(midRad).toFloat() * labelR
-                            val ly = pivot.y + sin(midRad).toFloat() * labelR
-                            val measured = textMeasurer.measure(item.label.uppercase(), labelStyle)
-                            drawText(
-                                measured,
-                                topLeft = Offset(
-                                    lx - measured.size.width / 2f,
-                                    ly - measured.size.height / 2f + 10f,
-                                ),
-                            )
-                        }
-                    }
-
-                    // Iconos blancos sobre sectores (capa Compose).
-                    labelPositions.forEachIndexed { i, pos ->
-                        val item = RATINGS[i]
-                        Icon(
-                            item.icon,
-                            contentDescription = item.label,
-                            tint = Color.White.copy(alpha = expandProgress),
-                            modifier = Modifier
-                                .offset {
-                                    IntOffset(
-                                        (pos.x - with(density) { 10.dp.toPx() }).toInt(),
-                                        (pos.y - with(density) { 22.dp.toPx() }).toInt(),
-                                    )
-                                }
-                                .size(20.dp),
-                        )
-                    }
-                }
-
-                Box(
-                    Modifier
-                        .align(if (right) Alignment.BottomEnd else Alignment.BottomStart)
-                        .size(fabSize)
-                        .background(
-                            if (expanded) palette.primary else palette.card,
-                            CircleShape,
-                        )
-                        .border(1.dp, palette.border, CircleShape)
-                        .pointerInput(right) {
-                            detectTapGestures {
-                                expanded = !expanded
-                                highlightIndex = -1
-                            }
-                        }
-                        .pointerInput(right, pivotInDial) {
-                            detectDragGestures(
-                                onDragStart = {
-                                    expanded = true
-                                    highlightIndex = -1
-                                },
-                                onDragEnd = { commitHighlight() },
-                                onDragCancel = {
-                                    expanded = false
-                                    highlightIndex = -1
-                                },
-                                onDrag = { change, _ ->
-                                    change.consume()
-                                    val fabOriginX = if (right) dialPx - fabPx else 0f
-                                    val fabOriginY = dialPx - fabPx
-                                    val x = fabOriginX + change.position.x
-                                    val y = fabOriginY + change.position.y
-                                    val dist = hypot(x - pivotInDial.x, y - pivotInDial.y)
-                                    highlightIndex = if (dist > innerR) {
-                                        sectorIndex(mathAngle(x, y, pivotInDial.x, pivotInDial.y))
-                                    } else {
-                                        -1
-                                    }
-                                },
-                            )
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        Icons.Outlined.Speed,
-                        contentDescription = if (expanded) "Cerrar dificultad" else "Calificar",
-                        tint = if (expanded) Color.White else palette.primary,
-                    )
-                }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Outlined.Speed,
+                    contentDescription = if (expanded) "Cerrar dificultad" else "Calificar",
+                    tint = if (expanded) Color.White else palette.primary,
+                )
             }
         }
     }
