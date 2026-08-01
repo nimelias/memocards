@@ -55,9 +55,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.draw
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.input.pointer.pointerInput
@@ -282,6 +284,16 @@ private fun RatingBar(onRate: (ReviewRating) -> Unit) {
     }
 }
 
+@Composable
+private fun rememberRatingIconPainters(): List<Painter> {
+    val white = ColorFilter.tint(Color.White)
+    val p0 = rememberVectorPainter(image = RATINGS[0].icon, colorFilter = white)
+    val p1 = rememberVectorPainter(image = RATINGS[1].icon, colorFilter = white)
+    val p2 = rememberVectorPainter(image = RATINGS[2].icon, colorFilter = white)
+    val p3 = rememberVectorPainter(image = RATINGS[3].icon, colorFilter = white)
+    return listOf(p0, p1, p2, p3)
+}
+
 /**
  * Abanico semicircular 180° anclado al lateral pulsado (centro en Y del toque).
  * Tamaño ≈ un tercio del diámetro anterior; iconos blancos y texto bold más grande.
@@ -312,7 +324,7 @@ private fun RatingArcMenu(
         fontSize = scaledSp(16f),
         fontWeight = FontWeight.Bold,
     )
-    val iconPainters = RATINGS.map { rememberVectorPainter(image = it.icon, tintColor = Color.White) }
+    val iconPainters = rememberRatingIconPainters()
     val gapDeg = 4f
     val totalSweepAbs = 180f
     val sectorSweepAbs = (totalSweepAbs - gapDeg * (RATINGS.size - 1)) / RATINGS.size
@@ -322,7 +334,7 @@ private fun RatingArcMenu(
     fun mathAngle(x: Float, y: Float, pivotX: Float, pivotY: Float): Float =
         atan2(-(y - pivotY), x - pivotX)
 
-    fun sectorIndex(angle: Float, pivotX: Float, pivotY: Float): Int {
+    fun sectorIndex(angle: Float): Int {
         if (arcFromRight) {
             var a = angle
             if (a < 0f) a += (2f * PI).toFloat()
@@ -409,8 +421,6 @@ private fun RatingArcMenu(
                             if (dist in inner..outerFull) {
                                 val idx = sectorIndex(
                                     mathAngle(offset.x, offset.y, pivot.x, pivot.y),
-                                    pivot.x,
-                                    pivot.y,
                                 )
                                 if (idx in RATINGS.indices) {
                                     onRate(RATINGS[idx].rating)
