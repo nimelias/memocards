@@ -55,6 +55,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
@@ -286,12 +287,12 @@ private fun RatingBar(onRate: (ReviewRating) -> Unit) {
 
 @Composable
 private fun rememberRatingIconPainters(): List<Painter> {
-    return listOf(
-        rememberVectorPainter(image = RATINGS[0].icon, tintColor = Color.White),
-        rememberVectorPainter(image = RATINGS[1].icon, tintColor = Color.White),
-        rememberVectorPainter(image = RATINGS[2].icon, tintColor = Color.White),
-        rememberVectorPainter(image = RATINGS[3].icon, tintColor = Color.White),
-    )
+    val white = ColorFilter.tint(Color.White)
+    val p0 = rememberVectorPainter(image = RATINGS[0].icon, colorFilter = white)
+    val p1 = rememberVectorPainter(image = RATINGS[1].icon, colorFilter = white)
+    val p2 = rememberVectorPainter(image = RATINGS[2].icon, colorFilter = white)
+    val p3 = rememberVectorPainter(image = RATINGS[3].icon, colorFilter = white)
+    return listOf(p0, p1, p2, p3)
 }
 
 /**
