@@ -63,7 +63,8 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.dpimport com.zatiki.memocards.data.MemoRepository
+import androidx.compose.ui.unit.dp
+import com.zatiki.memocards.data.MemoRepository
 import com.zatiki.memocards.domain.CardWithNote
 import com.zatiki.memocards.domain.RatingLayout
 import com.zatiki.memocards.domain.ReviewRating
