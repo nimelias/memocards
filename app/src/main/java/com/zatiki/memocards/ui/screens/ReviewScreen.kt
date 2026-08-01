@@ -55,20 +55,15 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.draw
 import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.dp
 import com.zatiki.memocards.data.MemoRepository
 import com.zatiki.memocards.domain.CardWithNote
@@ -284,16 +279,6 @@ private fun RatingBar(onRate: (ReviewRating) -> Unit) {
     }
 }
 
-@Composable
-private fun rememberRatingIconPainters(): List<Painter> {
-    val white = ColorFilter.tint(Color.White)
-    val p0 = rememberVectorPainter(image = RATINGS[0].icon, colorFilter = white)
-    val p1 = rememberVectorPainter(image = RATINGS[1].icon, colorFilter = white)
-    val p2 = rememberVectorPainter(image = RATINGS[2].icon, colorFilter = white)
-    val p3 = rememberVectorPainter(image = RATINGS[3].icon, colorFilter = white)
-    return listOf(p0, p1, p2, p3)
-}
-
 /**
  * Abanico semicircular 180° anclado al lateral pulsado (centro en Y del toque).
  * Tamaño ≈ un tercio del diámetro anterior; iconos blancos y texto bold más grande.
@@ -324,7 +309,11 @@ private fun RatingArcMenu(
         fontSize = scaledSp(16f),
         fontWeight = FontWeight.Bold,
     )
-    val iconPainters = rememberRatingIconPainters()
+    val iconLabelStyle = TextStyle(
+        color = Color.White,
+        fontSize = scaledSp(18f),
+        fontWeight = FontWeight.Bold,
+    )
     val gapDeg = 4f
     val totalSweepAbs = 180f
     val sectorSweepAbs = (totalSweepAbs - gapDeg * (RATINGS.size - 1)) / RATINGS.size
@@ -485,14 +474,18 @@ private fun RatingArcMenu(
                     val lx = pivot.x + cos(midRad).toFloat() * labelR
                     val ly = pivot.y + sin(midRad).toFloat() * labelR
                     val measured = textMeasurer.measure(item.label.uppercase(), labelStyle)
+                    val iconMeasured = textMeasurer.measure(item.shortLabel, iconLabelStyle)
                     val textRotation = midDeg + if (arcFromRight) 180f else 0f
-                    val iconTop = Offset(lx - iconSize / 2f, ly - iconSize * 1.15f - measured.size.height / 2f)
-                    draw(
-                        painter = iconPainters[i],
-                        topLeft = iconTop,
-                        size = Size(iconSize, iconSize),
-                        alpha = expandProgress,
-                    )
+                    val iconY = ly - iconSize * 0.55f - measured.size.height / 2f
+                    rotate(degrees = textRotation, pivot = Offset(lx, iconY)) {
+                        drawText(
+                            iconMeasured,
+                            topLeft = Offset(
+                                lx - iconMeasured.size.width / 2f,
+                                iconY - iconMeasured.size.height / 2f,
+                            ),
+                        )
+                    }
                     rotate(degrees = textRotation, pivot = Offset(lx, ly)) {
                         drawText(
                             measured,
