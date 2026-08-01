@@ -58,8 +58,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.draw
 import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
@@ -287,12 +287,12 @@ private fun RatingBar(onRate: (ReviewRating) -> Unit) {
 
 @Composable
 private fun rememberRatingIconPainters(): List<Painter> {
-    val white = ColorFilter.tint(Color.White)
-    val p0 = rememberVectorPainter(image = RATINGS[0].icon, colorFilter = white)
-    val p1 = rememberVectorPainter(image = RATINGS[1].icon, colorFilter = white)
-    val p2 = rememberVectorPainter(image = RATINGS[2].icon, colorFilter = white)
-    val p3 = rememberVectorPainter(image = RATINGS[3].icon, colorFilter = white)
-    return listOf(p0, p1, p2, p3)
+    return listOf(
+        rememberVectorPainter(image = RATINGS[0].icon),
+        rememberVectorPainter(image = RATINGS[1].icon),
+        rememberVectorPainter(image = RATINGS[2].icon),
+        rememberVectorPainter(image = RATINGS[3].icon),
+    )
 }
 
 /**
@@ -487,18 +487,17 @@ private fun RatingArcMenu(
                     val ly = pivot.y + sin(midRad).toFloat() * labelR
                     val measured = textMeasurer.measure(item.label.uppercase(), labelStyle)
                     val textRotation = midDeg + if (arcFromRight) 180f else 0f
-                    val iconTopLeft = Offset(
+                    val iconTop = Offset(
                         lx - iconSize / 2f,
                         ly - iconSize * 1.15f - measured.size.height / 2f,
                     )
-                    translate(left = iconTopLeft.x, top = iconTopLeft.y) {
-                        with(iconPainters[i]) {
-                            draw(
-                                size = Size(iconSize, iconSize),
-                                alpha = expandProgress,
-                            )
-                        }
-                    }
+                    draw(
+                        painter = iconPainters[i],
+                        topLeft = iconTop,
+                        size = Size(iconSize, iconSize),
+                        alpha = expandProgress,
+                        colorFilter = ColorFilter.tint(Color.White),
+                    )
                     rotate(degrees = textRotation, pivot = Offset(lx, ly)) {
                         drawText(
                             measured,
