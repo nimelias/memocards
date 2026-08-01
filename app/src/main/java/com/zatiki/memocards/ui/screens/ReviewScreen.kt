@@ -6,6 +6,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -42,6 +43,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,14 +56,17 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.draw
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.dp
 import com.zatiki.memocards.data.MemoRepository
 import com.zatiki.memocards.domain.CardWithNote
@@ -143,6 +148,17 @@ fun ReviewScreen(
             .statusBarsPadding()
             .navigationBarsPadding(),
     ) {
+        if (!loading && !finished && current != null && !revealed) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() },
+                        onClick = { revealBack() },
+                    ),
+            )
+        }
         Column(
             Modifier
                 .fillMaxSize()
@@ -267,8 +283,8 @@ private fun RatingBar(onRate: (ReviewRating) -> Unit) {
 }
 
 /**
- * Abanico semicircular 180° anclado al lateral (como la referencia).
- * Laterales o FAB abren; textos bold alineados radialmente.
+ * Abanico semicircular 180° anclado al lateral pulsado (centro en Y del toque).
+ * Tamaño ≈ un tercio del diámetro anterior; iconos blancos y texto bold más grande.
  */
 @Composable
 private fun RatingArcMenu(
@@ -276,7 +292,9 @@ private fun RatingArcMenu(
     onRate: (ReviewRating) -> Unit,
 ) {
     val palette = LocalMemoPalette.current
-    val right = layout == RatingLayout.ARC_RIGHT
+    val defaultRight = layout == RatingLayout.ARC_RIGHT
+    var arcFromRight by remember { mutableStateOf(defaultRight) }
+    var arcPivotYFraction by remember { mutableFloatStateOf(0.5f) }
     var expanded by remember { mutableStateOf(false) }
     var highlightIndex by remember { mutableIntStateOf(-1) }
     val expandProgress by animateFloatAsState(
@@ -291,29 +309,37 @@ private fun RatingArcMenu(
     val textMeasurer = rememberTextMeasurer()
     val labelStyle = TextStyle(
         color = Color.White,
-        fontSize = scaledSp(13f),
+        fontSize = scaledSp(16f),
         fontWeight = FontWeight.Bold,
     )
+    val iconPainters = RATINGS.map { rememberVectorPainter(image = it.icon, tintColor = Color.White) }
     val gapDeg = 4f
     val totalSweepAbs = 180f
     val sectorSweepAbs = (totalSweepAbs - gapDeg * (RATINGS.size - 1)) / RATINGS.size
     val startAngleDeg = 270f
-    val sweepSign = if (right) -1f else 1f
+    val sweepSign get() = if (arcFromRight) -1f else 1f
 
     fun mathAngle(x: Float, y: Float, pivotX: Float, pivotY: Float): Float =
         atan2(-(y - pivotY), x - pivotX)
 
-    fun sectorIndex(angle: Float): Int {
-        var a = angle
-        if (right) {
+    fun sectorIndex(angle: Float, pivotX: Float, pivotY: Float): Int {
+        if (arcFromRight) {
+            var a = angle
             if (a < 0f) a += (2f * PI).toFloat()
             if (a < PI.toFloat() / 2f || a > 3f * PI.toFloat() / 2f) return -1
             val t = ((a - PI.toFloat() / 2f) / PI.toFloat()).coerceIn(0f, 0.999f)
             return (RATINGS.lastIndex - (t * RATINGS.size).toInt()).coerceIn(0, RATINGS.lastIndex)
         }
-        if (a > PI.toFloat() / 2f || a < -PI.toFloat() / 2f) return -1
-        val t = ((PI.toFloat() / 2f - a) / PI.toFloat()).coerceIn(0f, 0.999f)
+        if (angle > PI.toFloat() / 2f || angle < -PI.toFloat() / 2f) return -1
+        val t = ((PI.toFloat() / 2f - angle) / PI.toFloat()).coerceIn(0f, 0.999f)
         return (RATINGS.lastIndex - (t * RATINGS.size).toInt()).coerceIn(0, RATINGS.lastIndex)
+    }
+
+    fun openArc(fromRight: Boolean, yFraction: Float) {
+        arcFromRight = fromRight
+        arcPivotYFraction = yFraction.coerceIn(0.12f, 0.88f)
+        expanded = true
+        highlightIndex = -1
     }
 
     fun commitHighlight() {
@@ -330,9 +356,10 @@ private fun RatingArcMenu(
                     Modifier
                         .width(56.dp)
                         .fillMaxHeight()
-                        .clickable {
-                            expanded = true
-                            highlightIndex = -1
+                        .pointerInput(Unit) {
+                            detectTapGestures { offset ->
+                                openArc(false, offset.y / size.height.toFloat())
+                            }
                         },
                 )
                 Spacer(Modifier.weight(1f))
@@ -340,9 +367,10 @@ private fun RatingArcMenu(
                     Modifier
                         .width(56.dp)
                         .fillMaxHeight()
-                        .clickable {
-                            expanded = true
-                            highlightIndex = -1
+                        .pointerInput(Unit) {
+                            detectTapGestures { offset ->
+                                openArc(true, offset.y / size.height.toFloat())
+                            }
                         },
                 )
             }
@@ -367,16 +395,23 @@ private fun RatingArcMenu(
                 Modifier
                     .fillMaxSize()
                     .padding(edgePad)
-                    .pointerInput(right) {
+                    .pointerInput(arcFromRight, arcPivotYFraction) {
                         detectTapGestures { offset ->
                             val w = size.width.toFloat()
                             val h = size.height.toFloat()
-                            val pivot = Offset(if (right) w else 0f, h / 2f)
-                            val outerFull = minOf(w, h) * 0.92f
+                            val pivot = Offset(
+                                if (arcFromRight) w else 0f,
+                                h * arcPivotYFraction,
+                            )
+                            val outerFull = minOf(w, h) * 0.92f / 3f
                             val inner = outerFull * 0.28f
                             val dist = hypot(offset.x - pivot.x, offset.y - pivot.y)
                             if (dist in inner..outerFull) {
-                                val idx = sectorIndex(mathAngle(offset.x, offset.y, pivot.x, pivot.y))
+                                val idx = sectorIndex(
+                                    mathAngle(offset.x, offset.y, pivot.x, pivot.y),
+                                    pivot.x,
+                                    pivot.y,
+                                )
                                 if (idx in RATINGS.indices) {
                                     onRate(RATINGS[idx].rating)
                                     expanded = false
@@ -389,10 +424,14 @@ private fun RatingArcMenu(
                         }
                     },
             ) {
-                val pivot = Offset(if (right) size.width else 0f, size.height / 2f)
-                val outerFull = minOf(size.width, size.height) * 0.92f
+                val pivot = Offset(
+                    if (arcFromRight) size.width else 0f,
+                    size.height * arcPivotYFraction,
+                )
+                val outerFull = minOf(size.width, size.height) * 0.92f / 3f
                 val outerR = outerFull * expandProgress
                 val innerR = outerFull * 0.28f
+                val iconSize = outerR * 0.22f
 
                 drawCircle(
                     color = Color.Black.copy(alpha = 0.18f * expandProgress),
@@ -436,7 +475,14 @@ private fun RatingArcMenu(
                     val lx = pivot.x + cos(midRad).toFloat() * labelR
                     val ly = pivot.y + sin(midRad).toFloat() * labelR
                     val measured = textMeasurer.measure(item.label.uppercase(), labelStyle)
-                    val textRotation = midDeg + if (right) 180f else 0f
+                    val textRotation = midDeg + if (arcFromRight) 180f else 0f
+                    val iconTop = Offset(lx - iconSize / 2f, ly - iconSize * 1.15f - measured.size.height / 2f)
+                    draw(
+                        painter = iconPainters[i],
+                        topLeft = iconTop,
+                        size = Size(iconSize, iconSize),
+                        alpha = expandProgress,
+                    )
                     rotate(degrees = textRotation, pivot = Offset(lx, ly)) {
                         drawText(
                             measured,
@@ -454,22 +500,26 @@ private fun RatingArcMenu(
             Modifier
                 .fillMaxSize()
                 .padding(edgePad),
-            contentAlignment = if (right) Alignment.BottomEnd else Alignment.BottomStart,
+            contentAlignment = if (defaultRight) Alignment.BottomEnd else Alignment.BottomStart,
         ) {
             Box(
                 Modifier
                     .size(fabSize)
                     .background(if (expanded) palette.primary else palette.card, CircleShape)
                     .border(1.dp, palette.border, CircleShape)
-                    .pointerInput(right) {
+                    .pointerInput(defaultRight) {
                         detectTapGestures {
+                            arcFromRight = defaultRight
+                            arcPivotYFraction = 0.5f
                             expanded = !expanded
                             highlightIndex = -1
                         }
                     }
-                    .pointerInput(right) {
+                    .pointerInput(defaultRight) {
                         detectDragGestures(
                             onDragStart = {
+                                arcFromRight = defaultRight
+                                arcPivotYFraction = 0.5f
                                 expanded = true
                                 highlightIndex = -1
                             },
@@ -482,7 +532,7 @@ private fun RatingArcMenu(
                                 change.consume()
                                 val dy = change.position.y - fabPx / 2f
                                 val dx = change.position.x - fabPx / 2f
-                                val score = if (right) -dx - dy else dx - dy
+                                val score = if (defaultRight) -dx - dy else dx - dy
                                 highlightIndex = when {
                                     score > fabPx * 1.4f -> 3
                                     score > fabPx * 0.7f -> 2
