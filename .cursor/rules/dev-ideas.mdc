@@ -26,23 +26,24 @@ App móvil tipo Anki: mazos, tarjetas, repaso con repetición espaciada (SM-2).
 
 ## Stack
 
-- Expo SDK + React Native + TypeScript
-- expo-sqlite (datos locales en el dispositivo)
-- @react-navigation/native
-- Sin Android SDK en el portátil: NO usar expo run:android ni Gradle local
+- Kotlin + Jetpack Compose + Material 3
+- Room (SQLite local)
+- Navigation Compose
+- `legacy-expo/` — app Expo anterior (solo referencia, sin `node_modules` local)
 
 ## Repositorio
 
 - Remoto (producción / fuente de verdad del código): https://github.com/nimelias/memocards
 - Ruta local: /home/vani/zatikiLabs/apps/memocards
 
-## Desarrollo (sin SDK)
+## Desarrollo local
 
-npm install && npx expo start — preview con Expo Go.
+Editar código en `app/src/main/java/`. Sin SDK ni Gradle en el portátil.
 
-## Builds
+## Compilación — solo CI remoto
 
-GitHub Actions genera APK debug; descargar desde Artifacts.
+**No compilar en local.** APKs exclusivamente vía GitHub Actions (`assembleRelease`).
+Workflow: `.github/workflows/android-preview.yml` → artifact `memocards-release-apk`.
 
 ## Convenciones
 

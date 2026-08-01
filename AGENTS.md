@@ -4,8 +4,9 @@ App nativa Android (Kotlin + Jetpack Compose).
 
 ## Reglas
 
-- Sin Android SDK en el portátil: NO usar `./gradlew` ni instalar SDK local salvo CI.
-- Builds: GitHub Actions (`assembleRelease`).
+- **Compilación solo en CI remoto** (GitHub Actions). El portátil es de pocos recursos: NO ejecutar `./gradlew`, NO instalar Android SDK, NO `npm install` / `expo run:android`.
+- Para obtener APK: push a `main` (o *Run workflow*) → descargar artifact `memocards-release-apk`.
+- No generar artefactos locales: `node_modules/`, `.gradle/`, `build/`, `.expo/` están en `.gitignore` y no deben recrearse salvo necesidad explícita.
 - Consultar MCP Dev Ideas (`projectId: 3`) al inicio.
 - Commits/push solo si el usuario lo pide.
 
