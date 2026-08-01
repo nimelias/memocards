@@ -114,7 +114,7 @@ fun SettingsScreen(
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            "Barra inferior o dial radial (FAB + gesto).",
+            "Por defecto arco. Tras revelar, toca un lateral o el FAB. También barra de botones.",
             color = palette.muted,
             fontSize = scaledSp(12f),
         )

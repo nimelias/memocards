@@ -15,19 +15,26 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Speed
+import androidx.compose.material.icons.outlined.Star
+import androidx.compose.material.icons.outlined.ThumbDown
+import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -48,14 +55,15 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.unit.dp
-import com.zatiki.memocards.data.MemoRepository
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dpimport com.zatiki.memocards.data.MemoRepository
 import com.zatiki.memocards.domain.CardWithNote
 import com.zatiki.memocards.domain.RatingLayout
 import com.zatiki.memocards.domain.ReviewRating
@@ -74,13 +82,14 @@ private data class RatingUi(
     val label: String,
     val shortLabel: String,
     val color: Color,
+    val icon: ImageVector,
 )
 
 private val RATINGS = listOf(
-    RatingUi(1, "Otra vez", "×", Color(0xFFDC2626)),
-    RatingUi(2, "Difícil", "D", Color(0xFFEA580C)),
-    RatingUi(3, "Bien", "B", Color(0xFF16A34A)),
-    RatingUi(4, "Fácil", "F", Color(0xFF2563EB)),
+    RatingUi(1, "Otra vez", "×", Color(0xFFDC2626), Icons.Outlined.Refresh),
+    RatingUi(2, "Difícil", "D", Color(0xFFEA580C), Icons.Outlined.ThumbDown),
+    RatingUi(3, "Bien", "B", Color(0xFF16A34A), Icons.Outlined.ThumbUp),
+    RatingUi(4, "Fácil", "F", Color(0xFF2563EB), Icons.Outlined.Star),
 )
 
 @Composable
@@ -258,8 +267,8 @@ private fun RatingBar(onRate: (ReviewRating) -> Unit) {
 }
 
 /**
- * Dial radial: FAB flotante (overlay, sin afectar layout).
- * El arco pivota en el centro del FAB hacia el interior de la pantalla.
+ * Dial radial 180°: laterales o FAB abren el menú.
+ * Semicírculo con gaps, padding central e iconos/letras blancos.
  */
 @Composable
 private fun RatingArcMenu(
@@ -276,7 +285,7 @@ private fun RatingArcMenu(
         label = "arcExpand",
     )
     val density = LocalDensity.current
-    val dialSize = 288.dp
+    val dialSize = 320.dp
     val fabSize = 56.dp
     val edgePad = 16.dp
     val dialPx = with(density) { dialSize.toPx() }
@@ -287,23 +296,31 @@ private fun RatingArcMenu(
         fontSize = scaledSp(11f),
         fontWeight = FontWeight.Bold,
     )
+    val gapDeg = 5f
+    val totalSweepAbs = 180f
+    val sectorSweepAbs = (totalSweepAbs - gapDeg * (RATINGS.size - 1)) / RATINGS.size
+    val sweepSign = if (right) 1f else -1f
+    val startAngleDeg = if (right) 180f else 0f
+    val outerRFull = dialPx * 0.95f
+    val innerR = dialPx * 0.32f
 
-    /** Ángulo matemático (Y↑): 0 = derecha, π/2 = arriba. */
     fun mathAngle(x: Float, y: Float, pivotX: Float, pivotY: Float): Float =
         atan2(-(y - pivotY), x - pivotX)
 
     fun sectorIndex(angle: Float): Int {
-        if (right) {
-            // π/2 (arriba) … π (izquierda) — cuadrante hacia el interior
-            var a = angle
-            if (a < 0f) a += (2f * PI).toFloat()
-            if (a < PI.toFloat() / 2f || a > PI.toFloat()) return -1
-            val t = (a - PI.toFloat() / 2f) / (PI.toFloat() / 2f)
-            return (3 - (t * 4f).toInt().coerceIn(0, 3)).coerceIn(0, 3)
+        var a = angle
+        if (a < 0f) a += (2f * PI).toFloat()
+        // Semicírculo superior: 0 (derecha) … π (izquierda)
+        if (a > PI.toFloat()) return -1
+        return if (right) {
+            // De izquierda (π) a derecha (0)
+            val t = ((PI.toFloat() - a) / PI.toFloat()).coerceIn(0f, 0.999f)
+            (t * RATINGS.size).toInt().coerceIn(0, RATINGS.lastIndex)
+        } else {
+            // De derecha (0) a izquierda (π)
+            val t = (a / PI.toFloat()).coerceIn(0f, 0.999f)
+            (t * RATINGS.size).toInt().coerceIn(0, RATINGS.lastIndex)
         }
-        if (angle < 0f || angle > PI.toFloat() / 2f) return -1
-        val t = angle / (PI.toFloat() / 2f)
-        return (t * 4f).toInt().coerceIn(0, 3)
     }
 
     fun commitHighlight() {
@@ -313,13 +330,51 @@ private fun RatingArcMenu(
         highlightIndex = -1
     }
 
-    // Pivot = centro del FAB dentro del dial (esquina inferior).
     val pivotInDial = Offset(
         x = if (right) dialPx - fabPx / 2f else fabPx / 2f,
         y = dialPx - fabPx / 2f,
     )
 
+    val labelPositions = remember(right, dialPx, fabPx, expandProgress) {
+        val outerR = outerRFull * expandProgress.coerceAtLeast(0.01f)
+        RATINGS.mapIndexed { i, _ ->
+            val sectorStart = startAngleDeg + sweepSign * i * (sectorSweepAbs + gapDeg)
+            val midDeg = sectorStart + sweepSign * sectorSweepAbs / 2f
+            val midRad = Math.toRadians(midDeg.toDouble())
+            val labelR = (innerR + outerR) / 2f
+            Offset(
+                pivotInDial.x + cos(midRad).toFloat() * labelR,
+                pivotInDial.y + sin(midRad).toFloat() * labelR,
+            )
+        }
+    }
+
     Box(Modifier.fillMaxSize()) {
+        // Laterales: tap abre el menú (carta ya revelada).
+        if (!expanded) {
+            Row(Modifier.fillMaxSize()) {
+                Box(
+                    Modifier
+                        .width(48.dp)
+                        .fillMaxHeight()
+                        .clickable {
+                            expanded = true
+                            highlightIndex = -1
+                        },
+                )
+                Spacer(Modifier.weight(1f))
+                Box(
+                    Modifier
+                        .width(48.dp)
+                        .fillMaxHeight()
+                        .clickable {
+                            expanded = true
+                            highlightIndex = -1
+                        },
+                )
+            }
+        }
+
         if (expandProgress > 0.01f) {
             Box(
                 Modifier
@@ -348,9 +403,8 @@ private fun RatingArcMenu(
                             .pointerInput(right, pivotInDial) {
                                 detectTapGestures { offset ->
                                     val dist = hypot(offset.x - pivotInDial.x, offset.y - pivotInDial.y)
-                                    val outer = dialPx * 0.92f
-                                    val inner = fabPx * 0.55f
-                                    if (dist in inner..outer) {
+                                    val outer = outerRFull
+                                    if (dist in innerR..outer) {
                                         val idx = sectorIndex(
                                             mathAngle(offset.x, offset.y, pivotInDial.x, pivotInDial.y),
                                         )
@@ -367,16 +421,18 @@ private fun RatingArcMenu(
                             },
                     ) {
                         val pivot = pivotInDial
-                        val outerR = dialPx * 0.92f * expandProgress
-                        val innerR = fabPx * 0.55f
-                        // Compose: 0° = 3 en punto, sentido horario +.
-                        // Derecha (pivot abajo-der): 180→270 horario = izquierda→arriba (interior).
-                        // Izquierda (pivot abajo-izq): 0→270 antihorario = derecha→arriba (interior).
-                        val startAngleDeg = if (right) 180f else 0f
-                        val sweepPer = (if (right) 90f else -90f) / RATINGS.size
+                        val outerR = outerRFull * expandProgress
+
+                        // Disco central de padding (hueco visual).
+                        drawCircle(
+                            color = Color.Black.copy(alpha = 0.2f * expandProgress),
+                            radius = innerR * 0.92f,
+                            center = pivot,
+                        )
 
                         RATINGS.forEachIndexed { i, item ->
-                            val sectorStart = startAngleDeg + i * sweepPer
+                            val sectorStart = startAngleDeg + sweepSign * i * (sectorSweepAbs + gapDeg)
+                            val sweep = sweepSign * sectorSweepAbs
                             val path = Path().apply {
                                 val startRad = Math.toRadians(sectorStart.toDouble())
                                 moveTo(
@@ -386,13 +442,13 @@ private fun RatingArcMenu(
                                 arcTo(
                                     Rect(pivot.x - outerR, pivot.y - outerR, pivot.x + outerR, pivot.y + outerR),
                                     sectorStart,
-                                    sweepPer,
+                                    sweep,
                                     false,
                                 )
                                 arcTo(
                                     Rect(pivot.x - innerR, pivot.y - innerR, pivot.x + innerR, pivot.y + innerR),
-                                    sectorStart + sweepPer,
-                                    -sweepPer,
+                                    sectorStart + sweep,
+                                    -sweep,
                                     false,
                                 )
                                 close()
@@ -400,12 +456,12 @@ private fun RatingArcMenu(
                             val lit = highlightIndex == i
                             drawPath(
                                 path,
-                                item.color.copy(alpha = (if (lit) 1f else 0.86f) * expandProgress),
+                                item.color.copy(alpha = (if (lit) 1f else 0.88f) * expandProgress),
                             )
                             if (lit) {
-                                drawPath(path, Color.White.copy(alpha = 0.4f * expandProgress), style = Stroke(4f))
+                                drawPath(path, Color.White.copy(alpha = 0.45f * expandProgress), style = Stroke(4f))
                             }
-                            val midDeg = sectorStart + sweepPer / 2f
+                            val midDeg = sectorStart + sweep / 2f
                             val midRad = Math.toRadians(midDeg.toDouble())
                             val labelR = (innerR + outerR) / 2f
                             val lx = pivot.x + cos(midRad).toFloat() * labelR
@@ -413,9 +469,30 @@ private fun RatingArcMenu(
                             val measured = textMeasurer.measure(item.label.uppercase(), labelStyle)
                             drawText(
                                 measured,
-                                topLeft = Offset(lx - measured.size.width / 2f, ly - measured.size.height / 2f),
+                                topLeft = Offset(
+                                    lx - measured.size.width / 2f,
+                                    ly - measured.size.height / 2f + 10f,
+                                ),
                             )
                         }
+                    }
+
+                    // Iconos blancos sobre sectores (capa Compose).
+                    labelPositions.forEachIndexed { i, pos ->
+                        val item = RATINGS[i]
+                        Icon(
+                            item.icon,
+                            contentDescription = item.label,
+                            tint = Color.White.copy(alpha = expandProgress),
+                            modifier = Modifier
+                                .offset {
+                                    IntOffset(
+                                        (pos.x - with(density) { 10.dp.toPx() }).toInt(),
+                                        (pos.y - with(density) { 22.dp.toPx() }).toInt(),
+                                    )
+                                }
+                                .size(20.dp),
+                        )
                     }
                 }
 
@@ -452,7 +529,7 @@ private fun RatingArcMenu(
                                     val x = fabOriginX + change.position.x
                                     val y = fabOriginY + change.position.y
                                     val dist = hypot(x - pivotInDial.x, y - pivotInDial.y)
-                                    highlightIndex = if (dist > fabPx * 0.55f) {
+                                    highlightIndex = if (dist > innerR) {
                                         sectorIndex(mathAngle(x, y, pivotInDial.x, pivotInDial.y))
                                     } else {
                                         -1

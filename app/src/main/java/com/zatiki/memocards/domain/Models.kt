@@ -72,7 +72,7 @@ data class DeckSettings(
 data class UiSettings(
     val theme: ThemeName = ThemeName.LIGHT,
     val fontScale: Float = 1f,
-    val ratingLayout: RatingLayout = RatingLayout.BAR,
+    val ratingLayout: RatingLayout = RatingLayout.ARC_RIGHT,
 )
 
 enum class ThemeName(val value: String) {
@@ -94,7 +94,7 @@ enum class RatingLayout(val value: String) {
 
     companion object {
         fun from(value: String?): RatingLayout =
-            entries.find { it.value == value } ?: BAR
+            entries.find { it.value == value } ?: ARC_RIGHT
     }
 }
 
