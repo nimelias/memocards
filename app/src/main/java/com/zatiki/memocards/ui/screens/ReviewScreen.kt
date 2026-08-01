@@ -7,7 +7,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -22,22 +21,18 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.ThumbDown
 import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -53,13 +48,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.asAndroidPath
+import androidx.compose.ui.graphics.drawscope.draw
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
@@ -240,7 +243,7 @@ fun ReviewScreen(
                                 onRate = { rating -> advanceAfterRating(current.card.id, rating) },
                             )
                         }
-                        // Arco: FAB overlay; no reserva espacio en el layout.
+                        // Arco: overlay lateral; no reserva espacio en el layout.
                     }
                 }
             }
@@ -289,7 +292,6 @@ private fun RatingArcMenu(
     layout: RatingLayout,
     onRate: (ReviewRating) -> Unit,
 ) {
-    val palette = LocalMemoPalette.current
     val defaultRight = layout == RatingLayout.ARC_RIGHT
     var arcFromRight by remember { mutableStateOf(defaultRight) }
     var arcPivotYFraction by remember { mutableFloatStateOf(0.5f) }
@@ -300,20 +302,18 @@ private fun RatingArcMenu(
         animationSpec = spring(dampingRatio = 0.82f, stiffness = 380f),
         label = "arcExpand",
     )
-    val density = LocalDensity.current
-    val fabSize = 56.dp
     val edgePad = 12.dp
-    val fabPx = with(density) { fabSize.toPx() }
     val textMeasurer = rememberTextMeasurer()
     val labelStyle = TextStyle(
         color = Color.White,
         fontSize = scaledSp(16f),
         fontWeight = FontWeight.Bold,
     )
-    val iconLabelStyle = TextStyle(
-        color = Color.White,
-        fontSize = scaledSp(18f),
-        fontWeight = FontWeight.Bold,
+    val iconPainters = listOf(
+        rememberVectorPainter(Icons.Outlined.Refresh),
+        rememberVectorPainter(Icons.Outlined.ThumbDown),
+        rememberVectorPainter(Icons.Outlined.ThumbUp),
+        rememberVectorPainter(Icons.Outlined.Star),
     )
     val gapDeg = 4f
     val totalSweepAbs = 180f
@@ -341,13 +341,6 @@ private fun RatingArcMenu(
         arcFromRight = fromRight
         arcPivotYFraction = yFraction.coerceIn(0.12f, 0.88f)
         expanded = true
-        highlightIndex = -1
-    }
-
-    fun commitHighlight() {
-        val idx = highlightIndex
-        if (idx in RATINGS.indices) onRate(RATINGS[idx].rating)
-        expanded = false
         highlightIndex = -1
     }
 
@@ -382,7 +375,6 @@ private fun RatingArcMenu(
             Box(
                 Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.28f * expandProgress))
                     .pointerInput(Unit) {
                         detectTapGestures {
                             expanded = false
@@ -405,7 +397,7 @@ private fun RatingArcMenu(
                                 if (arcFromRight) w else 0f,
                                 h * arcPivotYFraction,
                             )
-                            val outerFull = minOf(w, h) * 0.92f / 3f
+                            val outerFull = minOf(w, h) * 0.92f / 3f * 1.2f
                             val inner = outerFull * 0.28f
                             val dist = hypot(offset.x - pivot.x, offset.y - pivot.y)
                             if (dist in inner..outerFull) {
@@ -428,10 +420,48 @@ private fun RatingArcMenu(
                     if (arcFromRight) size.width else 0f,
                     size.height * arcPivotYFraction,
                 )
-                val outerFull = minOf(size.width, size.height) * 0.92f / 3f
+                val outerFull = minOf(size.width, size.height) * 0.92f / 3f * 1.2f
                 val outerR = outerFull * expandProgress
                 val innerR = outerFull * 0.28f
-                val iconSize = outerR * 0.22f
+                val iconSize = outerR * 0.24f
+                val shadowAlpha = (0.42f * expandProgress).coerceIn(0f, 1f)
+                val totalSweepDeg = sweepSign * totalSweepAbs
+
+                val semicirclePath = Path().apply {
+                    val startRad = Math.toRadians(startAngleDeg.toDouble())
+                    moveTo(
+                        pivot.x + cos(startRad).toFloat() * innerR,
+                        pivot.y + sin(startRad).toFloat() * innerR,
+                    )
+                    arcTo(
+                        Rect(pivot.x - outerR, pivot.y - outerR, pivot.x + outerR, pivot.y + outerR),
+                        startAngleDeg,
+                        totalSweepDeg,
+                        false,
+                    )
+                    arcTo(
+                        Rect(pivot.x - innerR, pivot.y - innerR, pivot.x + innerR, pivot.y + innerR),
+                        startAngleDeg + totalSweepDeg,
+                        -totalSweepDeg,
+                        false,
+                    )
+                    close()
+                }
+
+                drawIntoCanvas { canvas ->
+                    val shadowPaint = android.graphics.Paint().apply {
+                        isAntiAlias = true
+                        color = android.graphics.Color.TRANSPARENT
+                        setShadowLayer(
+                            24f * expandProgress,
+                            6f,
+                            8f,
+                            android.graphics.Color.argb((shadowAlpha * 255).toInt(), 0, 0, 0),
+                        )
+                    }
+                    shadowPaint.color = Color.DarkGray.copy(alpha = 0.55f * expandProgress).toArgb()
+                    canvas.nativeCanvas.drawPath(semicirclePath.asAndroidPath(), shadowPaint)
+                }
 
                 drawCircle(
                     color = Color.Black.copy(alpha = 0.18f * expandProgress),
@@ -464,28 +494,54 @@ private fun RatingArcMenu(
                         close()
                     }
                     val lit = highlightIndex == i
-                    drawPath(path, item.color.copy(alpha = (if (lit) 1f else 0.9f) * expandProgress))
+                    val fillColor = item.color.copy(alpha = (if (lit) 1f else 0.9f) * expandProgress)
+                    drawPath(path, fillColor)
                     if (lit) {
                         drawPath(path, Color.White.copy(alpha = 0.4f * expandProgress), style = Stroke(4f))
                     }
+                }
 
+                for (boundary in 0..RATINGS.size) {
+                    val boundaryDeg = startAngleDeg + sweepSign * boundary * (sectorSweepAbs + gapDeg)
+                    val boundaryRad = Math.toRadians(boundaryDeg.toDouble())
+                    val innerPt = Offset(
+                        pivot.x + cos(boundaryRad).toFloat() * innerR,
+                        pivot.y + sin(boundaryRad).toFloat() * innerR,
+                    )
+                    val outerPt = Offset(
+                        pivot.x + cos(boundaryRad).toFloat() * outerR,
+                        pivot.y + sin(boundaryRad).toFloat() * outerR,
+                    )
+                    drawLine(
+                        color = Color.White.copy(alpha = 0.95f * expandProgress),
+                        start = innerPt,
+                        end = outerPt,
+                        strokeWidth = 2.5f,
+                    )
+                }
+
+                RATINGS.forEachIndexed { i, item ->
+                    val visualIndex = RATINGS.lastIndex - i
+                    val sectorStart = startAngleDeg + sweepSign * visualIndex * (sectorSweepAbs + gapDeg)
+                    val sweep = sweepSign * sectorSweepAbs
                     val midDeg = sectorStart + sweep / 2f
                     val midRad = Math.toRadians(midDeg.toDouble())
                     val labelR = (innerR + outerR) / 2f
                     val lx = pivot.x + cos(midRad).toFloat() * labelR
                     val ly = pivot.y + sin(midRad).toFloat() * labelR
                     val measured = textMeasurer.measure(item.label.uppercase(), labelStyle)
-                    val iconMeasured = textMeasurer.measure(item.shortLabel, iconLabelStyle)
                     val textRotation = midDeg + if (arcFromRight) 180f else 0f
-                    val iconY = ly - iconSize * 0.55f - measured.size.height / 2f
+                    val iconY = ly - iconSize * 0.35f - measured.size.height / 2f
                     rotate(degrees = textRotation, pivot = Offset(lx, iconY)) {
-                        drawText(
-                            iconMeasured,
-                            topLeft = Offset(
-                                lx - iconMeasured.size.width / 2f,
-                                iconY - iconMeasured.size.height / 2f,
-                            ),
-                        )
+                        translate(left = lx - iconSize / 2f, top = iconY - iconSize / 2f) {
+                            with(iconPainters[i]) {
+                                draw(
+                                    size = Size(iconSize, iconSize),
+                                    alpha = expandProgress,
+                                    colorFilter = ColorFilter.tint(Color.White),
+                                )
+                            }
+                        }
                     }
                     rotate(degrees = textRotation, pivot = Offset(lx, ly)) {
                         drawText(
@@ -497,62 +553,6 @@ private fun RatingArcMenu(
                         )
                     }
                 }
-            }
-        }
-
-        Box(
-            Modifier
-                .fillMaxSize()
-                .padding(edgePad),
-            contentAlignment = if (defaultRight) Alignment.BottomEnd else Alignment.BottomStart,
-        ) {
-            Box(
-                Modifier
-                    .size(fabSize)
-                    .background(if (expanded) palette.primary else palette.card, CircleShape)
-                    .border(1.dp, palette.border, CircleShape)
-                    .pointerInput(defaultRight) {
-                        detectTapGestures {
-                            arcFromRight = defaultRight
-                            arcPivotYFraction = 0.5f
-                            expanded = !expanded
-                            highlightIndex = -1
-                        }
-                    }
-                    .pointerInput(defaultRight) {
-                        detectDragGestures(
-                            onDragStart = {
-                                arcFromRight = defaultRight
-                                arcPivotYFraction = 0.5f
-                                expanded = true
-                                highlightIndex = -1
-                            },
-                            onDragEnd = { commitHighlight() },
-                            onDragCancel = {
-                                expanded = false
-                                highlightIndex = -1
-                            },
-                            onDrag = { change, _ ->
-                                change.consume()
-                                val dy = change.position.y - fabPx / 2f
-                                val dx = change.position.x - fabPx / 2f
-                                val score = if (defaultRight) -dx - dy else dx - dy
-                                highlightIndex = when {
-                                    score > fabPx * 1.4f -> 3
-                                    score > fabPx * 0.7f -> 2
-                                    score > 0f -> 1
-                                    else -> 0
-                                }
-                            },
-                        )
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.Outlined.Speed,
-                    contentDescription = if (expanded) "Cerrar dificultad" else "Calificar",
-                    tint = if (expanded) Color.White else palette.primary,
-                )
             }
         }
     }
