@@ -53,11 +53,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
@@ -104,6 +108,7 @@ fun ReviewScreen(
 ) {
     val palette = LocalMemoPalette.current
     val scope = rememberCoroutineScope()
+    val revealTapSource = remember { MutableInteractionSource() }
     var queue by remember { mutableStateOf<List<CardWithNote>>(emptyList()) }
     var index by remember { mutableIntStateOf(0) }
     var revealed by remember { mutableStateOf(false) }
@@ -151,7 +156,7 @@ fun ReviewScreen(
                     .fillMaxSize()
                     .clickable(
                         indication = null,
-                        interactionSource = remember { MutableInteractionSource() },
+                        interactionSource = revealTapSource,
                         onClick = { revealBack() },
                     ),
             )
@@ -279,6 +284,16 @@ private fun RatingBar(onRate: (ReviewRating) -> Unit) {
     }
 }
 
+@Composable
+private fun rememberRatingIconPainters(): List<Painter> {
+    return listOf(
+        rememberVectorPainter(image = RATINGS[0].icon, tintColor = Color.White),
+        rememberVectorPainter(image = RATINGS[1].icon, tintColor = Color.White),
+        rememberVectorPainter(image = RATINGS[2].icon, tintColor = Color.White),
+        rememberVectorPainter(image = RATINGS[3].icon, tintColor = Color.White),
+    )
+}
+
 /**
  * Abanico semicircular 180° anclado al lateral pulsado (centro en Y del toque).
  * Tamaño ≈ un tercio del diámetro anterior; iconos blancos y texto bold más grande.
@@ -309,11 +324,7 @@ private fun RatingArcMenu(
         fontSize = scaledSp(16f),
         fontWeight = FontWeight.Bold,
     )
-    val iconLabelStyle = TextStyle(
-        color = Color.White,
-        fontSize = scaledSp(18f),
-        fontWeight = FontWeight.Bold,
-    )
+    val iconPainters = rememberRatingIconPainters()
     val gapDeg = 4f
     val totalSweepAbs = 180f
     val sectorSweepAbs = (totalSweepAbs - gapDeg * (RATINGS.size - 1)) / RATINGS.size
@@ -474,17 +485,18 @@ private fun RatingArcMenu(
                     val lx = pivot.x + cos(midRad).toFloat() * labelR
                     val ly = pivot.y + sin(midRad).toFloat() * labelR
                     val measured = textMeasurer.measure(item.label.uppercase(), labelStyle)
-                    val iconMeasured = textMeasurer.measure(item.shortLabel, iconLabelStyle)
                     val textRotation = midDeg + if (arcFromRight) 180f else 0f
-                    val iconY = ly - iconSize * 0.55f - measured.size.height / 2f
-                    rotate(degrees = textRotation, pivot = Offset(lx, iconY)) {
-                        drawText(
-                            iconMeasured,
-                            topLeft = Offset(
-                                lx - iconMeasured.size.width / 2f,
-                                iconY - iconMeasured.size.height / 2f,
-                            ),
-                        )
+                    val iconTopLeft = Offset(
+                        lx - iconSize / 2f,
+                        ly - iconSize * 1.15f - measured.size.height / 2f,
+                    )
+                    translate(left = iconTopLeft.x, top = iconTopLeft.y) {
+                        with(iconPainters[i]) {
+                            draw(
+                                size = Size(iconSize, iconSize),
+                                alpha = expandProgress,
+                            )
+                        }
                     }
                     rotate(degrees = textRotation, pivot = Offset(lx, ly)) {
                         drawText(
