@@ -252,22 +252,44 @@ class MemoRepository(private val dao: MemoDao) {
 
     /** Primera instalación vacía: mazo «Trivial» con preguntas tipo trivial. */
     suspend fun ensureDemoDeckIfNeeded() {
-        val already = dao.getUiSettingsRows().any { it.key == DEMO_SEEDED_KEY }
-        if (already) return
-        if (listDecks().isNotEmpty()) {
-            dao.upsertSetting(AppSettingEntity(DEMO_SEEDED_KEY, "1"))
-            return
-        }
-        val deck = createDeck("Trivial")
-        for ((front, back) in TRIVIAL_CARDS) {
-            createNote(deck.id, NoteFields(front = front, back = back))
+        val settings = dao.getUiSettingsRows()
+        val legacySeeded = settings.any { it.key == DEMO_SEEDED_KEY }
+        val version = settings.find { it.key == DEMO_TRIVIAL_VERSION_KEY }?.value?.toIntOrNull()
+            ?: if (legacySeeded) 1 else 0
+        if (version >= DEMO_TRIVIAL_VERSION) return
+
+        val decks = listDecks()
+        if (decks.isEmpty()) {
+            seedTrivialCards(createDeck("Trivial").id)
+        } else {
+            decks.find { it.name == "Trivial" }?.let { topUpTrivialCards(it.id) }
         }
         dao.upsertSetting(AppSettingEntity(DEMO_SEEDED_KEY, "1"))
+        dao.upsertSetting(
+            AppSettingEntity(DEMO_TRIVIAL_VERSION_KEY, DEMO_TRIVIAL_VERSION.toString()),
+        )
+    }
+
+    private suspend fun seedTrivialCards(deckId: Long) {
+        for ((front, back) in TRIVIAL_CARDS) {
+            createNote(deckId, NoteFields(front = front, back = back))
+        }
+    }
+
+    private suspend fun topUpTrivialCards(deckId: Long) {
+        val existing = listNotes(deckId).map { it.fields.front }.toSet()
+        for ((front, back) in TRIVIAL_CARDS) {
+            if (front !in existing) {
+                createNote(deckId, NoteFields(front = front, back = back))
+            }
+        }
     }
 
     companion object {
         private const val MS_PER_DAY = 86_400_000L
         private const val DEMO_SEEDED_KEY = "demo.seeded"
+        private const val DEMO_TRIVIAL_VERSION_KEY = "demo.trivial.version"
+        private const val DEMO_TRIVIAL_VERSION = 2
 
         private val TRIVIAL_CARDS = listOf(
             "¿Cuál es la capital de Francia?" to "París",
@@ -282,6 +304,29 @@ class MemoRepository(private val dao: MemoDao) {
             "¿Cuántos jugadores tiene un equipo de fútbol en el campo?" to "Once",
             "¿Cuál es la montaña más alta del mundo?" to "El Everest",
             "¿En qué país nació Mozart?" to "Austria (Salzburgo)",
+            "¿Cuál es la capital de Japón?" to "Tokio",
+            "¿Cuántos huesos tiene el cuerpo humano adulto?" to "206",
+            "¿Quién descubrió la penicilina?" to "Alexander Fleming",
+            "¿En qué océano está la isla de Madagascar?" to "Índico",
+            "¿Cuál es el animal terrestre más grande?" to "El elefante africano",
+            "¿Qué gas respiramos principalmente?" to "Nitrógeno (78 %); oxígeno ~21 %",
+            "¿Cuántos continentes hay tradicionalmente?" to "Siete",
+            "¿Quién fue el primer presidente de EE. UU.?" to "George Washington",
+            "¿Cuál es la capital de Australia?" to "Canberra",
+            "¿En qué año cayó el Muro de Berlín?" to "1989",
+            "¿Cuántos minutos tiene una hora?" to "60",
+            "¿Qué planeta es conocido como el planeta rojo?" to "Marte",
+            "¿Cuál es el océano más grande?" to "El Pacífico",
+            "¿Quién escribió Cien años de soledad?" to "Gabriel García Márquez",
+            "¿Cuántos días tiene un año bisiesto?" to "366",
+            "¿Cuál es el metal más ligero?" to "El litio",
+            "¿En qué país está la Torre Eiffel?" to "Francia",
+            "¿Cuántas cuerdas tiene una guitarra estándar?" to "Seis",
+            "¿Quién pintó El grito?" to "Edvard Munch",
+            "¿Cuál es la capital de Italia?" to "Roma",
+            "¿Qué vitamina produce el sol en la piel?" to "Vitamina D",
+            "¿Cuántos lados tiene un triángulo?" to "Tres",
+            "¿En qué deporte se usa un birdie?" to "Bádminton",
         )
     }
 }

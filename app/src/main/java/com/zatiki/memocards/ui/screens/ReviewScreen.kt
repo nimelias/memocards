@@ -2,6 +2,7 @@ package com.zatiki.memocards.ui.screens
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -59,6 +60,7 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -272,12 +274,12 @@ fun ReviewScreen(
             !loading &&
             !finished &&
             current != null &&
-            revealed &&
             settings.ratingLayout != RatingLayout.BAR
         ) {
             RatingArcMenu(
                 layout = settings.ratingLayout,
                 labelMode = settings.arcLabelMode,
+                interactive = revealed,
                 onRate = { rating -> advanceAfterRating(current.card.id, rating) },
             )
         }
@@ -311,6 +313,7 @@ private fun RatingBar(onRate: (ReviewRating) -> Unit) {
 private fun RatingArcMenu(
     layout: RatingLayout,
     labelMode: ArcLabelMode,
+    interactive: Boolean,
     onRate: (ReviewRating) -> Unit,
 ) {
     val defaultRight = layout == RatingLayout.ARC_RIGHT
@@ -320,7 +323,11 @@ private fun RatingArcMenu(
     var highlightIndex by remember { mutableIntStateOf(-1) }
     val expandProgress by animateFloatAsState(
         targetValue = if (expanded) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.82f, stiffness = 380f),
+        animationSpec = if (expanded) {
+            tween(durationMillis = 160)
+        } else {
+            spring(dampingRatio = 0.9f, stiffness = 700f)
+        },
         label = "arcExpand",
     )
     val edgePad = 12.dp
@@ -330,16 +337,32 @@ private fun RatingArcMenu(
         fontSize = scaledSp(if (labelMode == ArcLabelMode.TEXT) 18f else 16f),
         fontWeight = FontWeight.Bold,
     )
-    val iconPainters = listOf(
-        rememberVectorPainter(Icons.Outlined.Refresh),
-        rememberVectorPainter(Icons.Outlined.ThumbDown),
-        rememberVectorPainter(Icons.Outlined.ThumbUp),
-        rememberVectorPainter(Icons.Outlined.Star),
-    )
+    val refreshPainter = rememberVectorPainter(Icons.Outlined.Refresh)
+    val thumbDownPainter = rememberVectorPainter(Icons.Outlined.ThumbDown)
+    val thumbUpPainter = rememberVectorPainter(Icons.Outlined.ThumbUp)
+    val starPainter = rememberVectorPainter(Icons.Outlined.Star)
+    val iconPainters = listOf(refreshPainter, thumbDownPainter, thumbUpPainter, starPainter)
+    val textLayouts = remember(labelMode, labelStyle) {
+        if (labelMode == ArcLabelMode.TEXT) {
+            RATINGS.map { textMeasurer.measure(it.label.uppercase(), labelStyle) }
+        } else {
+            emptyList()
+        }
+    }
+    val shadowPaint = remember {
+        android.graphics.Paint().apply { isAntiAlias = true }
+    }
     val totalSweepAbs = 180f
     val sectorSweepAbs = totalSweepAbs / RATINGS.size
     val startAngleDeg = 270f
     val sweepSign = if (arcFromRight) -1f else 1f
+
+    LaunchedEffect(interactive) {
+        if (!interactive) {
+            expanded = false
+            highlightIndex = -1
+        }
+    }
 
     fun mathAngle(x: Float, y: Float, pivotX: Float, pivotY: Float): Float =
         atan2(-(y - pivotY), x - pivotX)
@@ -365,7 +388,7 @@ private fun RatingArcMenu(
     }
 
     Box(Modifier.fillMaxSize()) {
-        if (!expanded) {
+        if (interactive && !expanded) {
             Row(Modifier.fillMaxSize()) {
                 Box(
                     Modifier
@@ -391,7 +414,7 @@ private fun RatingArcMenu(
             }
         }
 
-        if (expandProgress > 0.01f) {
+        if (interactive && expandProgress > 0.01f) {
             Box(
                 Modifier
                     .fillMaxSize()
@@ -404,155 +427,170 @@ private fun RatingArcMenu(
             )
         }
 
-        if (expandProgress > 0.01f) {
-            Canvas(
-                Modifier
-                    .fillMaxSize()
-                    .padding(edgePad)
-                    .pointerInput(arcFromRight, arcPivotYFraction) {
-                        detectTapGestures { offset ->
-                            val w = size.width.toFloat()
-                            val h = size.height.toFloat()
-                            val pivot = Offset(
-                                if (arcFromRight) w else 0f,
-                                h * arcPivotYFraction,
-                            )
-                            val outerFull = minOf(w, h) * 0.92f / 3f * 1.2f
-                            val inner = outerFull * 0.28f
-                            val dist = hypot(offset.x - pivot.x, offset.y - pivot.y)
-                            if (dist in inner..outerFull) {
-                                val idx = sectorIndex(
-                                    mathAngle(offset.x, offset.y, pivot.x, pivot.y),
+        Canvas(
+            Modifier
+                .fillMaxSize()
+                .padding(edgePad)
+                .graphicsLayer {
+                    alpha = if (interactive) expandProgress.coerceIn(0f, 1f) else 0f
+                }
+                .then(
+                    if (interactive) {
+                        Modifier.pointerInput(arcFromRight, arcPivotYFraction) {
+                            detectTapGestures { offset ->
+                                if (expandProgress < 0.05f) return@detectTapGestures
+                                val w = size.width.toFloat()
+                                val h = size.height.toFloat()
+                                val pivot = Offset(
+                                    if (arcFromRight) w else 0f,
+                                    h * arcPivotYFraction,
                                 )
-                                if (idx in RATINGS.indices) {
-                                    onRate(RATINGS[idx].rating)
-                                    expanded = false
-                                    highlightIndex = -1
-                                    return@detectTapGestures
+                                val outerFull = minOf(w, h) * 0.92f / 3f * 1.2f
+                                val inner = outerFull * 0.28f
+                                val dist = hypot(offset.x - pivot.x, offset.y - pivot.y)
+                                if (dist in inner..outerFull) {
+                                    val idx = sectorIndex(
+                                        mathAngle(offset.x, offset.y, pivot.x, pivot.y),
+                                    )
+                                    if (idx in RATINGS.indices) {
+                                        onRate(RATINGS[idx].rating)
+                                        expanded = false
+                                        highlightIndex = -1
+                                        return@detectTapGestures
+                                    }
                                 }
+                                expanded = false
+                                highlightIndex = -1
                             }
-                            expanded = false
-                            highlightIndex = -1
                         }
+                    } else {
+                        Modifier
                     },
-            ) {
-                val pivot = Offset(
-                    if (arcFromRight) size.width else 0f,
-                    size.height * arcPivotYFraction,
-                )
-                val outerFull = minOf(size.width, size.height) * 0.92f / 3f * 1.2f
-                val outerR = outerFull * expandProgress
-                val innerR = outerFull * 0.34f
-                val iconSize = outerR * 0.2f
-                val shadowAlpha = (0.58f * expandProgress).coerceIn(0f, 1f)
-                val totalSweepDeg = sweepSign * totalSweepAbs
+                ),
+        ) {
+            if (!interactive && expandProgress < 0.01f) {
+                // Precalienta sombra y pintores en el primer frame sin mostrar el menú.
+                drawIntoCanvas { canvas ->
+                    shadowPaint.color = android.graphics.Color.TRANSPARENT
+                    shadowPaint.setShadowLayer(1f, 0f, 0f, android.graphics.Color.TRANSPARENT)
+                    canvas.nativeCanvas.drawCircle(0f, 0f, 1f, shadowPaint)
+                }
+                return@Canvas
+            }
+            if (expandProgress < 0.01f) return@Canvas
+            val pivot = Offset(
+                if (arcFromRight) size.width else 0f,
+                size.height * arcPivotYFraction,
+            )
+            val outerFull = minOf(size.width, size.height) * 0.92f / 3f * 1.2f
+            val outerR = outerFull * expandProgress
+            val innerR = outerFull * 0.34f
+            val iconSize = outerR * 0.2f
+            val shadowAlpha = (0.58f * expandProgress).coerceIn(0f, 1f)
+            val totalSweepDeg = sweepSign * totalSweepAbs
 
-                val semicirclePath = Path().apply {
-                    val startRad = Math.toRadians(startAngleDeg.toDouble())
+            val semicirclePath = Path().apply {
+                val startRad = Math.toRadians(startAngleDeg.toDouble())
+                moveTo(
+                    pivot.x + cos(startRad).toFloat() * innerR,
+                    pivot.y + sin(startRad).toFloat() * innerR,
+                )
+                arcTo(
+                    Rect(pivot.x - outerR, pivot.y - outerR, pivot.x + outerR, pivot.y + outerR),
+                    startAngleDeg,
+                    totalSweepDeg,
+                    false,
+                )
+                arcTo(
+                    Rect(pivot.x - innerR, pivot.y - innerR, pivot.x + innerR, pivot.y + innerR),
+                    startAngleDeg + totalSweepDeg,
+                    -totalSweepDeg,
+                    false,
+                )
+                close()
+            }
+
+            drawIntoCanvas { canvas ->
+                shadowPaint.color = android.graphics.Color.TRANSPARENT
+                shadowPaint.setShadowLayer(
+                    36f * expandProgress,
+                    8f,
+                    12f,
+                    android.graphics.Color.argb((shadowAlpha * 255).toInt(), 0, 0, 0),
+                )
+                shadowPaint.color = Color.DarkGray.copy(alpha = 0.72f * expandProgress).toArgb()
+                canvas.nativeCanvas.drawPath(semicirclePath.asAndroidPath(), shadowPaint)
+            }
+
+            drawCircle(
+                color = Color.Black.copy(alpha = 0.18f * expandProgress),
+                radius = innerR * 0.9f,
+                center = pivot,
+            )
+
+            RATINGS.forEachIndexed { i, item ->
+                val visualIndex = RATINGS.lastIndex - i
+                val sectorStart = startAngleDeg + sweepSign * visualIndex * sectorSweepAbs
+                val sweep = sweepSign * sectorSweepAbs
+                val path = Path().apply {
+                    val startRad = Math.toRadians(sectorStart.toDouble())
                     moveTo(
                         pivot.x + cos(startRad).toFloat() * innerR,
                         pivot.y + sin(startRad).toFloat() * innerR,
                     )
                     arcTo(
                         Rect(pivot.x - outerR, pivot.y - outerR, pivot.x + outerR, pivot.y + outerR),
-                        startAngleDeg,
-                        totalSweepDeg,
+                        sectorStart,
+                        sweep,
                         false,
                     )
                     arcTo(
                         Rect(pivot.x - innerR, pivot.y - innerR, pivot.x + innerR, pivot.y + innerR),
-                        startAngleDeg + totalSweepDeg,
-                        -totalSweepDeg,
+                        sectorStart + sweep,
+                        -sweep,
                         false,
                     )
                     close()
                 }
-
-                drawIntoCanvas { canvas ->
-                    val shadowPaint = android.graphics.Paint().apply {
-                        isAntiAlias = true
-                        color = android.graphics.Color.TRANSPARENT
-                        setShadowLayer(
-                            36f * expandProgress,
-                            8f,
-                            12f,
-                            android.graphics.Color.argb((shadowAlpha * 255).toInt(), 0, 0, 0),
-                        )
-                    }
-                    shadowPaint.color = Color.DarkGray.copy(alpha = 0.72f * expandProgress).toArgb()
-                    canvas.nativeCanvas.drawPath(semicirclePath.asAndroidPath(), shadowPaint)
+                val lit = highlightIndex == i
+                val fillColor = item.color.copy(alpha = (if (lit) 1f else 0.9f) * expandProgress)
+                drawPath(path, fillColor)
+                if (lit) {
+                    drawPath(path, Color.White.copy(alpha = 0.35f * expandProgress), style = Stroke(3f))
                 }
+            }
 
-                drawCircle(
-                    color = Color.Black.copy(alpha = 0.18f * expandProgress),
-                    radius = innerR * 0.9f,
-                    center = pivot,
-                )
-
-                RATINGS.forEachIndexed { i, item ->
-                    val visualIndex = RATINGS.lastIndex - i
-                    val sectorStart = startAngleDeg + sweepSign * visualIndex * sectorSweepAbs
-                    val sweep = sweepSign * sectorSweepAbs
-                    val path = Path().apply {
-                        val startRad = Math.toRadians(sectorStart.toDouble())
-                        moveTo(
-                            pivot.x + cos(startRad).toFloat() * innerR,
-                            pivot.y + sin(startRad).toFloat() * innerR,
-                        )
-                        arcTo(
-                            Rect(pivot.x - outerR, pivot.y - outerR, pivot.x + outerR, pivot.y + outerR),
-                            sectorStart,
-                            sweep,
-                            false,
-                        )
-                        arcTo(
-                            Rect(pivot.x - innerR, pivot.y - innerR, pivot.x + innerR, pivot.y + innerR),
-                            sectorStart + sweep,
-                            -sweep,
-                            false,
-                        )
-                        close()
-                    }
-                    val lit = highlightIndex == i
-                    val fillColor = item.color.copy(alpha = (if (lit) 1f else 0.9f) * expandProgress)
-                    drawPath(path, fillColor)
-                    if (lit) {
-                        drawPath(path, Color.White.copy(alpha = 0.35f * expandProgress), style = Stroke(3f))
-                    }
-                }
-
-                RATINGS.forEachIndexed { i, item ->
-                    val visualIndex = RATINGS.lastIndex - i
-                    val sectorStart = startAngleDeg + sweepSign * visualIndex * sectorSweepAbs
-                    val sweep = sweepSign * sectorSweepAbs
-                    val midDeg = sectorStart + sweep / 2f
-                    val midRad = Math.toRadians(midDeg.toDouble())
-                    val labelR = (innerR + outerR) / 2f
-                    val lx = pivot.x + cos(midRad).toFloat() * labelR
-                    val ly = pivot.y + sin(midRad).toFloat() * labelR
-                    val textRotation = midDeg + if (arcFromRight) 180f else 0f
-                    rotate(degrees = textRotation, pivot = Offset(lx, ly)) {
-                        when (labelMode) {
-                            ArcLabelMode.ICONS -> {
-                                val iconDrawSize = iconSize * 1.15f
-                                translate(left = lx - iconDrawSize / 2f, top = ly - iconDrawSize / 2f) {
-                                    with(iconPainters[i]) {
-                                        draw(
-                                            size = Size(iconDrawSize, iconDrawSize),
-                                            alpha = expandProgress,
-                                            colorFilter = ColorFilter.tint(Color.White),
-                                        )
-                                    }
+            RATINGS.forEachIndexed { i, item ->
+                val visualIndex = RATINGS.lastIndex - i
+                val sectorStart = startAngleDeg + sweepSign * visualIndex * sectorSweepAbs
+                val sweep = sweepSign * sectorSweepAbs
+                val midDeg = sectorStart + sweep / 2f
+                val midRad = Math.toRadians(midDeg.toDouble())
+                val labelR = (innerR + outerR) / 2f
+                val lx = pivot.x + cos(midRad).toFloat() * labelR
+                val ly = pivot.y + sin(midRad).toFloat() * labelR
+                val textRotation = midDeg + if (arcFromRight) 180f else 0f
+                rotate(degrees = textRotation, pivot = Offset(lx, ly)) {
+                    when (labelMode) {
+                        ArcLabelMode.ICONS -> {
+                            val iconDrawSize = iconSize * 1.15f
+                            translate(left = lx - iconDrawSize / 2f, top = ly - iconDrawSize / 2f) {
+                                with(iconPainters[i]) {
+                                    draw(
+                                        size = Size(iconDrawSize, iconDrawSize),
+                                        alpha = expandProgress,
+                                        colorFilter = ColorFilter.tint(Color.White),
+                                    )
                                 }
                             }
-                            ArcLabelMode.TEXT -> {
-                                val measured = textMeasurer.measure(item.label.uppercase(), labelStyle)
-                                translate(
-                                    left = lx - measured.size.width / 2f,
-                                    top = ly - measured.size.height / 2f,
-                                ) {
-                                    drawText(measured)
-                                }
+                        }
+                        ArcLabelMode.TEXT -> {
+                            val measured = textLayouts[i]
+                            translate(
+                                left = lx - measured.size.width / 2f,
+                                top = ly - measured.size.height / 2f,
+                            ) {
+                                drawText(measured)
                             }
                         }
                     }
