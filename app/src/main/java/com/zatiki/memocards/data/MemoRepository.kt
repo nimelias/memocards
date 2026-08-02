@@ -1,5 +1,6 @@
 package com.zatiki.memocards.data
 
+import com.zatiki.memocards.domain.ArcLabelMode
 import com.zatiki.memocards.domain.Card
 import com.zatiki.memocards.domain.CardQueue
 import com.zatiki.memocards.domain.CardWithNote
@@ -232,13 +233,20 @@ class MemoRepository(private val dao: MemoDao) {
         val theme = ThemeName.from(map["ui.theme"])
         val font = map["ui.fontScale"]?.toFloatOrNull()?.coerceIn(0.9f, 1.4f) ?: 1f
         val ratingLayout = RatingLayout.from(map["ui.ratingLayout"])
-        return UiSettings(theme = theme, fontScale = font, ratingLayout = ratingLayout)
+        val arcLabelMode = ArcLabelMode.from(map["ui.arcLabelMode"])
+        return UiSettings(
+            theme = theme,
+            fontScale = font,
+            ratingLayout = ratingLayout,
+            arcLabelMode = arcLabelMode,
+        )
     }
 
     suspend fun saveUiSettings(next: UiSettings): UiSettings {
         dao.upsertSetting(AppSettingEntity("ui.theme", next.theme.value))
         dao.upsertSetting(AppSettingEntity("ui.fontScale", next.fontScale.toString()))
         dao.upsertSetting(AppSettingEntity("ui.ratingLayout", next.ratingLayout.value))
+        dao.upsertSetting(AppSettingEntity("ui.arcLabelMode", next.arcLabelMode.value))
         return next
     }
 

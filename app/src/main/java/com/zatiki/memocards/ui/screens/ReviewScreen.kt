@@ -71,6 +71,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.zatiki.memocards.data.MemoRepository
+import com.zatiki.memocards.domain.ArcLabelMode
 import com.zatiki.memocards.domain.CardWithNote
 import com.zatiki.memocards.domain.RatingLayout
 import com.zatiki.memocards.domain.ReviewRating
@@ -276,6 +277,7 @@ fun ReviewScreen(
         ) {
             RatingArcMenu(
                 layout = settings.ratingLayout,
+                labelMode = settings.arcLabelMode,
                 onRate = { rating -> advanceAfterRating(current.card.id, rating) },
             )
         }
@@ -308,6 +310,7 @@ private fun RatingBar(onRate: (ReviewRating) -> Unit) {
 @Composable
 private fun RatingArcMenu(
     layout: RatingLayout,
+    labelMode: ArcLabelMode,
     onRate: (ReviewRating) -> Unit,
 ) {
     val defaultRight = layout == RatingLayout.ARC_RIGHT
@@ -324,7 +327,7 @@ private fun RatingArcMenu(
     val textMeasurer = rememberTextMeasurer()
     val labelStyle = TextStyle(
         color = Color.White,
-        fontSize = scaledSp(16f),
+        fontSize = scaledSp(if (labelMode == ArcLabelMode.TEXT) 18f else 16f),
         fontWeight = FontWeight.Bold,
     )
     val iconPainters = listOf(
@@ -441,7 +444,7 @@ private fun RatingArcMenu(
                 val outerR = outerFull * expandProgress
                 val innerR = outerFull * 0.34f
                 val iconSize = outerR * 0.2f
-                val shadowAlpha = (0.42f * expandProgress).coerceIn(0f, 1f)
+                val shadowAlpha = (0.58f * expandProgress).coerceIn(0f, 1f)
                 val totalSweepDeg = sweepSign * totalSweepAbs
 
                 val semicirclePath = Path().apply {
@@ -470,13 +473,13 @@ private fun RatingArcMenu(
                         isAntiAlias = true
                         color = android.graphics.Color.TRANSPARENT
                         setShadowLayer(
-                            24f * expandProgress,
-                            6f,
+                            36f * expandProgress,
                             8f,
+                            12f,
                             android.graphics.Color.argb((shadowAlpha * 255).toInt(), 0, 0, 0),
                         )
                     }
-                    shadowPaint.color = Color.DarkGray.copy(alpha = 0.55f * expandProgress).toArgb()
+                    shadowPaint.color = Color.DarkGray.copy(alpha = 0.72f * expandProgress).toArgb()
                     canvas.nativeCanvas.drawPath(semicirclePath.asAndroidPath(), shadowPaint)
                 }
 
@@ -527,22 +530,30 @@ private fun RatingArcMenu(
                     val labelR = (innerR + outerR) / 2f
                     val lx = pivot.x + cos(midRad).toFloat() * labelR
                     val ly = pivot.y + sin(midRad).toFloat() * labelR
-                    val measured = textMeasurer.measure(item.label.uppercase(), labelStyle)
                     val textRotation = midDeg + if (arcFromRight) 180f else 0f
-                    val rowW = iconSize + measured.size.width + iconSize * 0.25f
                     rotate(degrees = textRotation, pivot = Offset(lx, ly)) {
-                        translate(left = lx - rowW / 2f, top = ly - iconSize / 2f) {
-                            with(iconPainters[i]) {
-                                draw(
-                                    size = Size(iconSize, iconSize),
-                                    alpha = expandProgress,
-                                    colorFilter = ColorFilter.tint(Color.White),
-                                )
+                        when (labelMode) {
+                            ArcLabelMode.ICONS -> {
+                                val iconDrawSize = iconSize * 1.15f
+                                translate(left = lx - iconDrawSize / 2f, top = ly - iconDrawSize / 2f) {
+                                    with(iconPainters[i]) {
+                                        draw(
+                                            size = Size(iconDrawSize, iconDrawSize),
+                                            alpha = expandProgress,
+                                            colorFilter = ColorFilter.tint(Color.White),
+                                        )
+                                    }
+                                }
                             }
-                            drawText(
-                                measured,
-                                topLeft = Offset(iconSize + iconSize * 0.25f, (iconSize - measured.size.height) / 2f),
-                            )
+                            ArcLabelMode.TEXT -> {
+                                val measured = textMeasurer.measure(item.label.uppercase(), labelStyle)
+                                translate(
+                                    left = lx - measured.size.width / 2f,
+                                    top = ly - measured.size.height / 2f,
+                                ) {
+                                    drawText(measured)
+                                }
+                            }
                         }
                     }
                 }

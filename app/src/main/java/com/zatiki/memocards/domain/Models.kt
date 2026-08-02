@@ -73,6 +73,7 @@ data class UiSettings(
     val theme: ThemeName = ThemeName.LIGHT,
     val fontScale: Float = 1f,
     val ratingLayout: RatingLayout = RatingLayout.ARC_RIGHT,
+    val arcLabelMode: ArcLabelMode = ArcLabelMode.ICONS,
 )
 
 enum class ThemeName(val value: String) {
@@ -83,6 +84,17 @@ enum class ThemeName(val value: String) {
     companion object {
         fun from(value: String?): ThemeName =
             entries.find { it.value == value } ?: LIGHT
+    }
+}
+
+/** Contenido de cada sector del menú arco: solo iconos o solo texto. */
+enum class ArcLabelMode(val value: String) {
+    ICONS("icons"),
+    TEXT("text");
+
+    companion object {
+        fun from(value: String?): ArcLabelMode =
+            entries.find { it.value == value } ?: ICONS
     }
 }
 

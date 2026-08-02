@@ -145,6 +145,11 @@ class MainActivity : ComponentActivity() {
                                     settings = repo.saveUiSettings(settings.copy(ratingLayout = layout))
                                 }
                             },
+                            onArcLabelModeChange = { mode ->
+                                scope.launch {
+                                    settings = repo.saveUiSettings(settings.copy(arcLabelMode = mode))
+                                }
+                            },
                         )
                     }
                 }

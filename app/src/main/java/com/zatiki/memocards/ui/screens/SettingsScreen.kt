@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.zatiki.memocards.domain.ArcLabelMode
 import com.zatiki.memocards.domain.RatingLayout
 import com.zatiki.memocards.domain.ThemeName
 import com.zatiki.memocards.domain.UiSettings
@@ -38,6 +39,7 @@ fun SettingsScreen(
     onThemeChange: (ThemeName) -> Unit,
     onFontScaleChange: (Float) -> Unit,
     onRatingLayoutChange: (RatingLayout) -> Unit,
+    onArcLabelModeChange: (ArcLabelMode) -> Unit,
 ) {
     val palette = LocalMemoPalette.current
 
@@ -114,7 +116,7 @@ fun SettingsScreen(
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            "Por defecto arco. Tras revelar, toca un lateral o el FAB. También barra de botones.",
+            "Por defecto arco. Tras revelar, toca un lateral. También barra de botones.",
             color = palette.muted,
             fontSize = scaledSp(12f),
         )
@@ -135,6 +137,43 @@ fun SettingsScreen(
                     },
                     modifier = Modifier.fillMaxWidth(),
                 )
+            }
+        }
+
+        if (settings.ratingLayout != RatingLayout.BAR) {
+            Spacer(Modifier.height(20.dp))
+            Text(
+                "Contenido del arco",
+                fontWeight = FontWeight.SemiBold,
+                color = palette.text,
+                fontSize = scaledSp(15f),
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Mostrar solo iconos o solo texto en cada sector, no ambos.",
+                color = palette.muted,
+                fontSize = scaledSp(12f),
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                ArcLabelMode.entries.forEach { mode ->
+                    FilterChip(
+                        selected = settings.arcLabelMode == mode,
+                        onClick = { onArcLabelModeChange(mode) },
+                        label = {
+                            Text(
+                                when (mode) {
+                                    ArcLabelMode.ICONS -> "Solo iconos"
+                                    ArcLabelMode.TEXT -> "Solo texto"
+                                },
+                            )
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
         }
 
