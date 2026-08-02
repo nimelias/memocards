@@ -220,27 +220,31 @@ fun ReviewScreen(
                             Surface(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .height(56.dp)
                                     .shadow(6.dp, RoundedCornerShape(28.dp)),
                                 shape = RoundedCornerShape(28.dp),
                                 color = palette.card,
                             ) {
-                                Text(
-                                    "Mostrar respuesta",
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 16.dp),
-                                    textAlign = TextAlign.Center,
-                                    fontSize = scaledSp(16f),
-                                    fontWeight = FontWeight.Medium,
-                                    color = palette.text,
+                                Box(
+                                    Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        "Mostrar respuesta",
+                                        fontSize = scaledSp(16f),
+                                        fontWeight = FontWeight.Medium,
+                                        color = palette.text,
+                                    )
+                                }
+                            }
+                        } else {
+                            Spacer(Modifier.height(56.dp))
+                            if (settings.ratingLayout == RatingLayout.BAR) {
+                                RatingBar(
+                                    onRate = { rating -> advanceAfterRating(current.card.id, rating) },
                                 )
                             }
-                        } else if (settings.ratingLayout == RatingLayout.BAR) {
-                            RatingBar(
-                                onRate = { rating -> advanceAfterRating(current.card.id, rating) },
-                            )
                         }
-                        // Arco: overlay lateral; no reserva espacio en el layout.
                     }
                 }
             }
@@ -329,9 +333,8 @@ private fun RatingArcMenu(
         rememberVectorPainter(Icons.Outlined.ThumbUp),
         rememberVectorPainter(Icons.Outlined.Star),
     )
-    val gapDeg = 4f
     val totalSweepAbs = 180f
-    val sectorSweepAbs = (totalSweepAbs - gapDeg * (RATINGS.size - 1)) / RATINGS.size
+    val sectorSweepAbs = totalSweepAbs / RATINGS.size
     val startAngleDeg = 270f
     val sweepSign = if (arcFromRight) -1f else 1f
 
@@ -436,8 +439,8 @@ private fun RatingArcMenu(
                 )
                 val outerFull = minOf(size.width, size.height) * 0.92f / 3f * 1.2f
                 val outerR = outerFull * expandProgress
-                val innerR = outerFull * 0.28f
-                val iconSize = outerR * 0.24f
+                val innerR = outerFull * 0.34f
+                val iconSize = outerR * 0.2f
                 val shadowAlpha = (0.42f * expandProgress).coerceIn(0f, 1f)
                 val totalSweepDeg = sweepSign * totalSweepAbs
 
@@ -485,7 +488,7 @@ private fun RatingArcMenu(
 
                 RATINGS.forEachIndexed { i, item ->
                     val visualIndex = RATINGS.lastIndex - i
-                    val sectorStart = startAngleDeg + sweepSign * visualIndex * (sectorSweepAbs + gapDeg)
+                    val sectorStart = startAngleDeg + sweepSign * visualIndex * sectorSweepAbs
                     val sweep = sweepSign * sectorSweepAbs
                     val path = Path().apply {
                         val startRad = Math.toRadians(sectorStart.toDouble())
@@ -511,32 +514,13 @@ private fun RatingArcMenu(
                     val fillColor = item.color.copy(alpha = (if (lit) 1f else 0.9f) * expandProgress)
                     drawPath(path, fillColor)
                     if (lit) {
-                        drawPath(path, Color.White.copy(alpha = 0.4f * expandProgress), style = Stroke(4f))
+                        drawPath(path, Color.White.copy(alpha = 0.35f * expandProgress), style = Stroke(3f))
                     }
-                }
-
-                for (boundary in 0..RATINGS.size) {
-                    val boundaryDeg = startAngleDeg + sweepSign * boundary * (sectorSweepAbs + gapDeg)
-                    val boundaryRad = Math.toRadians(boundaryDeg.toDouble())
-                    val innerPt = Offset(
-                        pivot.x + cos(boundaryRad).toFloat() * innerR,
-                        pivot.y + sin(boundaryRad).toFloat() * innerR,
-                    )
-                    val outerPt = Offset(
-                        pivot.x + cos(boundaryRad).toFloat() * outerR,
-                        pivot.y + sin(boundaryRad).toFloat() * outerR,
-                    )
-                    drawLine(
-                        color = Color.White.copy(alpha = 0.95f * expandProgress),
-                        start = innerPt,
-                        end = outerPt,
-                        strokeWidth = 2.5f,
-                    )
                 }
 
                 RATINGS.forEachIndexed { i, item ->
                     val visualIndex = RATINGS.lastIndex - i
-                    val sectorStart = startAngleDeg + sweepSign * visualIndex * (sectorSweepAbs + gapDeg)
+                    val sectorStart = startAngleDeg + sweepSign * visualIndex * sectorSweepAbs
                     val sweep = sweepSign * sectorSweepAbs
                     val midDeg = sectorStart + sweep / 2f
                     val midRad = Math.toRadians(midDeg.toDouble())
@@ -545,9 +529,9 @@ private fun RatingArcMenu(
                     val ly = pivot.y + sin(midRad).toFloat() * labelR
                     val measured = textMeasurer.measure(item.label.uppercase(), labelStyle)
                     val textRotation = midDeg + if (arcFromRight) 180f else 0f
-                    val iconY = ly - iconSize * 0.35f - measured.size.height / 2f
-                    rotate(degrees = textRotation, pivot = Offset(lx, iconY)) {
-                        translate(left = lx - iconSize / 2f, top = iconY - iconSize / 2f) {
+                    val rowW = iconSize + measured.size.width + iconSize * 0.25f
+                    rotate(degrees = textRotation, pivot = Offset(lx, ly)) {
+                        translate(left = lx - rowW / 2f, top = ly - iconSize / 2f) {
                             with(iconPainters[i]) {
                                 draw(
                                     size = Size(iconSize, iconSize),
@@ -555,16 +539,11 @@ private fun RatingArcMenu(
                                     colorFilter = ColorFilter.tint(Color.White),
                                 )
                             }
+                            drawText(
+                                measured,
+                                topLeft = Offset(iconSize + iconSize * 0.25f, (iconSize - measured.size.height) / 2f),
+                            )
                         }
-                    }
-                    rotate(degrees = textRotation, pivot = Offset(lx, ly)) {
-                        drawText(
-                            measured,
-                            topLeft = Offset(
-                                lx - measured.size.width / 2f,
-                                ly - measured.size.height / 2f,
-                            ),
-                        )
                     }
                 }
             }
