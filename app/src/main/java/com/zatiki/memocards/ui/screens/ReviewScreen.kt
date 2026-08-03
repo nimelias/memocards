@@ -386,45 +386,6 @@ private fun RatingArcMenu(
     }
 
     Box(Modifier.fillMaxSize()) {
-        if (interactive && !expanded) {
-            Row(Modifier.fillMaxSize()) {
-                Box(
-                    Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .pointerInput(Unit) {
-                            detectTapGestures { offset ->
-                                openArc(false, offset.y / size.height.toFloat())
-                            }
-                        },
-                )
-                Spacer(Modifier.weight(2f))
-                Box(
-                    Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .pointerInput(Unit) {
-                            detectTapGestures { offset ->
-                                openArc(true, offset.y / size.height.toFloat())
-                            }
-                        },
-                )
-            }
-        }
-
-        if (interactive && expandProgress > 0.01f) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .pointerInput(Unit) {
-                        detectTapGestures {
-                            expanded = false
-                            highlightIndex = -1
-                        }
-                    },
-            )
-        }
-
         Canvas(
             Modifier
                 .fillMaxSize()
@@ -433,10 +394,9 @@ private fun RatingArcMenu(
                     alpha = if (interactive) expandProgress.coerceIn(0f, 1f) else 0f
                 }
                 .then(
-                    if (interactive) {
+                    if (interactive && expanded) {
                         Modifier.pointerInput(arcFromRight, arcPivotYFraction) {
                             detectTapGestures { offset ->
-                                if (expandProgress < 0.05f) return@detectTapGestures
                                 val w = size.width.toFloat()
                                 val h = size.height.toFloat()
                                 val pivot = Offset(
@@ -593,6 +553,45 @@ private fun RatingArcMenu(
                         }
                     }
                 }
+            }
+        }
+
+        if (interactive && expandProgress > 0.01f) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectTapGestures {
+                            expanded = false
+                            highlightIndex = -1
+                        }
+                    },
+            )
+        }
+
+        if (interactive && !expanded) {
+            Row(Modifier.fillMaxSize()) {
+                Box(
+                    Modifier
+                        .fillMaxWidth(0.25f)
+                        .fillMaxHeight()
+                        .pointerInput(Unit) {
+                            detectTapGestures { offset ->
+                                openArc(false, offset.y / size.height.toFloat())
+                            }
+                        },
+                )
+                Spacer(Modifier.weight(1f))
+                Box(
+                    Modifier
+                        .fillMaxWidth(0.25f)
+                        .fillMaxHeight()
+                        .pointerInput(Unit) {
+                            detectTapGestures { offset ->
+                                openArc(true, offset.y / size.height.toFloat())
+                            }
+                        },
+                )
             }
         }
     }
