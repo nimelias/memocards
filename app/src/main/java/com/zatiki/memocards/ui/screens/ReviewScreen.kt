@@ -69,7 +69,6 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.zatiki.memocards.data.MemoRepository
 import com.zatiki.memocards.domain.ArcLabelMode
@@ -332,8 +331,6 @@ private fun RatingArcMenu(
         label = "arcExpand",
     )
     val edgePad = 12.dp
-    val density = LocalDensity.current
-    val edgePadPx = with(density) { edgePad.toPx() }
     val textMeasurer = rememberTextMeasurer()
     val labelStyle = TextStyle(
         color = Color.White,
@@ -370,7 +367,7 @@ private fun RatingArcMenu(
 
     LaunchedEffect(expanded) {
         if (expanded) {
-            delay(150)
+            delay(130)
             if (expanded) arcInputEnabled = true
         } else {
             arcInputEnabled = false
@@ -400,60 +397,46 @@ private fun RatingArcMenu(
         highlightIndex = -1
     }
 
-    fun arcGeometry(boxWidth: Float, boxHeight: Float): Triple<Offset, Float, Float> {
-        val pivotX = if (arcFromRight) boxWidth - edgePadPx else edgePadPx
-        val pivotY = boxHeight * arcPivotYFraction
-        val outerFull = minOf(boxWidth, boxHeight) * 0.92f / 3f * 1.2f
-        val innerR = outerFull * 0.34f
-        return Triple(Offset(pivotX, pivotY), innerR, outerFull)
-    }
-
-    fun handleArcTap(x: Float, y: Float, boxWidth: Float, boxHeight: Float): Boolean {
-        val (pivot, innerR, outerFull) = arcGeometry(boxWidth, boxHeight)
-        val dist = hypot(x - pivot.x, y - pivot.y)
-        if (dist < innerR * 0.88f || dist > outerFull * 1.08f) return false
-        val idx = sectorIndex(mathAngle(x, y, pivot.x, pivot.y))
-        if (idx !in RATINGS.indices) return false
-        onRate(RATINGS[idx].rating)
-        expanded = false
-        highlightIndex = -1
-        return true
-    }
-
-    Box(
-        Modifier
-            .fillMaxSize()
-            .pointerInput(interactive, expanded, arcInputEnabled, arcFromRight, arcPivotYFraction) {
-                detectTapGestures { offset ->
-                    if (!interactive) return@detectTapGestures
-                    val w = size.width.toFloat()
-                    val h = size.height.toFloat()
-                    val x = offset.x
-                    val y = offset.y
-
-                    if (!expanded) {
-                        when {
-                            x <= w * 0.25f -> openArc(false, y / h)
-                            x >= w * 0.75f -> openArc(true, y / h)
-                        }
-                        return@detectTapGestures
-                    }
-
-                    if (!arcInputEnabled) return@detectTapGestures
-
-                    if (!handleArcTap(x, y, w, h)) {
-                        expanded = false
-                        highlightIndex = -1
-                    }
-                }
-            },
-    ) {
+    Box(Modifier.fillMaxSize()) {
         Canvas(
             Modifier
                 .fillMaxSize()
+                .padding(edgePad)
                 .graphicsLayer {
                     alpha = if (interactive) expandProgress.coerceIn(0f, 1f) else 0f
-                },
+                }
+                .then(
+                    if (interactive && arcInputEnabled) {
+                        Modifier.pointerInput(arcFromRight, arcPivotYFraction) {
+                            detectTapGestures { offset ->
+                                val w = size.width.toFloat()
+                                val h = size.height.toFloat()
+                                val pivot = Offset(
+                                    if (arcFromRight) w else 0f,
+                                    h * arcPivotYFraction,
+                                )
+                                val outerFull = minOf(w, h) * 0.92f / 3f * 1.2f
+                                val inner = outerFull * 0.28f
+                                val dist = hypot(offset.x - pivot.x, offset.y - pivot.y)
+                                if (dist in inner..outerFull) {
+                                    val idx = sectorIndex(
+                                        mathAngle(offset.x, offset.y, pivot.x, pivot.y),
+                                    )
+                                    if (idx in RATINGS.indices) {
+                                        onRate(RATINGS[idx].rating)
+                                        expanded = false
+                                        highlightIndex = -1
+                                        return@detectTapGestures
+                                    }
+                                }
+                                expanded = false
+                                highlightIndex = -1
+                            }
+                        }
+                    } else {
+                        Modifier
+                    },
+                ),
         ) {
             if (!interactive && expandProgress < 0.01f) {
                 // Precalienta sombra y pintores en el primer frame sin mostrar el menú.
@@ -465,9 +448,13 @@ private fun RatingArcMenu(
                 return@Canvas
             }
             if (expandProgress < 0.01f) return@Canvas
-            val (pivot, innerRBase, outerFull) = arcGeometry(size.width, size.height)
+            val pivot = Offset(
+                if (arcFromRight) size.width else 0f,
+                size.height * arcPivotYFraction,
+            )
+            val outerFull = minOf(size.width, size.height) * 0.92f / 3f * 1.2f
             val outerR = outerFull * expandProgress
-            val innerR = innerRBase * expandProgress
+            val innerR = outerFull * 0.34f
             val iconSize = outerR * 0.2f
             val shadowAlpha = (0.58f * expandProgress).coerceIn(0f, 1f)
             val totalSweepDeg = sweepSign * totalSweepAbs
@@ -479,23 +466,13 @@ private fun RatingArcMenu(
                     pivot.y + sin(startRad).toFloat() * innerR,
                 )
                 arcTo(
-                    Rect(
-                        pivot.x - outerR,
-                        pivot.y - outerR,
-                        pivot.x + outerR,
-                        pivot.y + outerR,
-                    ),
+                    Rect(pivot.x - outerR, pivot.y - outerR, pivot.x + outerR, pivot.y + outerR),
                     startAngleDeg,
                     totalSweepDeg,
                     false,
                 )
                 arcTo(
-                    Rect(
-                        pivot.x - innerR,
-                        pivot.y - innerR,
-                        pivot.x + innerR,
-                        pivot.y + innerR,
-                    ),
+                    Rect(pivot.x - innerR, pivot.y - innerR, pivot.x + innerR, pivot.y + innerR),
                     startAngleDeg + totalSweepDeg,
                     -totalSweepDeg,
                     false,
@@ -532,23 +509,13 @@ private fun RatingArcMenu(
                         pivot.y + sin(startRad).toFloat() * innerR,
                     )
                     arcTo(
-                        Rect(
-                            pivot.x - outerR,
-                            pivot.y - outerR,
-                            pivot.x + outerR,
-                            pivot.y + outerR,
-                        ),
+                        Rect(pivot.x - outerR, pivot.y - outerR, pivot.x + outerR, pivot.y + outerR),
                         sectorStart,
                         sweep,
                         false,
                     )
                     arcTo(
-                        Rect(
-                            pivot.x - innerR,
-                            pivot.y - innerR,
-                            pivot.x + innerR,
-                            pivot.y + innerR,
-                        ),
+                        Rect(pivot.x - innerR, pivot.y - innerR, pivot.x + innerR, pivot.y + innerR),
                         sectorStart + sweep,
                         -sweep,
                         false,
@@ -598,6 +565,32 @@ private fun RatingArcMenu(
                         }
                     }
                 }
+            }
+        }
+
+        if (interactive && !expanded) {
+            Row(Modifier.fillMaxSize()) {
+                Box(
+                    Modifier
+                        .fillMaxWidth(0.25f)
+                        .fillMaxHeight()
+                        .pointerInput(Unit) {
+                            detectTapGestures { offset ->
+                                openArc(false, offset.y / size.height.toFloat())
+                            }
+                        },
+                )
+                Spacer(Modifier.weight(1f))
+                Box(
+                    Modifier
+                        .fillMaxWidth(0.25f)
+                        .fillMaxHeight()
+                        .pointerInput(Unit) {
+                            detectTapGestures { offset ->
+                                openArc(true, offset.y / size.height.toFloat())
+                            }
+                        },
+                )
             }
         }
     }
