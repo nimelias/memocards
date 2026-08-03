@@ -83,6 +83,7 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.sin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private data class RatingUi(
@@ -318,6 +319,7 @@ private fun RatingArcMenu(
     var arcFromRight by remember { mutableStateOf(defaultRight) }
     var arcPivotYFraction by remember { mutableFloatStateOf(0.5f) }
     var expanded by remember { mutableStateOf(false) }
+    var arcInputEnabled by remember { mutableStateOf(false) }
     var highlightIndex by remember { mutableIntStateOf(-1) }
     val expandProgress by animateFloatAsState(
         targetValue = if (expanded) 1f else 0f,
@@ -358,7 +360,17 @@ private fun RatingArcMenu(
     LaunchedEffect(interactive) {
         if (!interactive) {
             expanded = false
+            arcInputEnabled = false
             highlightIndex = -1
+        }
+    }
+
+    LaunchedEffect(expanded) {
+        if (expanded) {
+            delay(130)
+            if (expanded) arcInputEnabled = true
+        } else {
+            arcInputEnabled = false
         }
     }
 
@@ -386,6 +398,32 @@ private fun RatingArcMenu(
     }
 
     Box(Modifier.fillMaxSize()) {
+        if (interactive && !expanded) {
+            Row(Modifier.fillMaxSize()) {
+                Box(
+                    Modifier
+                        .fillMaxWidth(0.25f)
+                        .fillMaxHeight()
+                        .pointerInput(Unit) {
+                            detectTapGestures { offset ->
+                                openArc(false, offset.y / size.height.toFloat())
+                            }
+                        },
+                )
+                Spacer(Modifier.weight(1f))
+                Box(
+                    Modifier
+                        .fillMaxWidth(0.25f)
+                        .fillMaxHeight()
+                        .pointerInput(Unit) {
+                            detectTapGestures { offset ->
+                                openArc(true, offset.y / size.height.toFloat())
+                            }
+                        },
+                )
+            }
+        }
+
         Canvas(
             Modifier
                 .fillMaxSize()
@@ -394,7 +432,7 @@ private fun RatingArcMenu(
                     alpha = if (interactive) expandProgress.coerceIn(0f, 1f) else 0f
                 }
                 .then(
-                    if (interactive && expanded) {
+                    if (interactive && arcInputEnabled) {
                         Modifier.pointerInput(arcFromRight, arcPivotYFraction) {
                             detectTapGestures { offset ->
                                 val w = size.width.toFloat()
@@ -553,45 +591,6 @@ private fun RatingArcMenu(
                         }
                     }
                 }
-            }
-        }
-
-        if (interactive && expandProgress > 0.01f) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .pointerInput(Unit) {
-                        detectTapGestures {
-                            expanded = false
-                            highlightIndex = -1
-                        }
-                    },
-            )
-        }
-
-        if (interactive && !expanded) {
-            Row(Modifier.fillMaxSize()) {
-                Box(
-                    Modifier
-                        .fillMaxWidth(0.25f)
-                        .fillMaxHeight()
-                        .pointerInput(Unit) {
-                            detectTapGestures { offset ->
-                                openArc(false, offset.y / size.height.toFloat())
-                            }
-                        },
-                )
-                Spacer(Modifier.weight(1f))
-                Box(
-                    Modifier
-                        .fillMaxWidth(0.25f)
-                        .fillMaxHeight()
-                        .pointerInput(Unit) {
-                            detectTapGestures { offset ->
-                                openArc(true, offset.y / size.height.toFloat())
-                            }
-                        },
-                )
             }
         }
     }
