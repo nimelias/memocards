@@ -104,6 +104,8 @@ enum class RatingLayout(val value: String) {
     ARC_RIGHT("arc_right"),
     ARC_LEFT("arc_left");
 
+    val isArc: Boolean get() = this != BAR
+
     companion object {
         fun from(value: String?): RatingLayout =
             entries.find { it.value == value } ?: ARC_RIGHT

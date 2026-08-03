@@ -1,14 +1,19 @@
 package com.zatiki.memocards.ui.theme
 
+import android.app.Activity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
 import com.zatiki.memocards.domain.ThemeName
 import com.zatiki.memocards.domain.UiSettings
 
@@ -67,7 +72,17 @@ fun MemoCardsTheme(
     content: @Composable () -> Unit,
 ) {
     val palette = paletteFor(settings.theme)
-    val scheme = if (settings.theme == ThemeName.DARK) {
+    val darkTheme = settings.theme == ThemeName.DARK
+    val view = LocalView.current
+    SideEffect {
+        val window = (view.context as? Activity)?.window ?: return@SideEffect
+        WindowCompat.getInsetsController(window, view).apply {
+            isAppearanceLightStatusBars = !darkTheme
+            isAppearanceLightNavigationBars = !darkTheme
+        }
+        window.navigationBarColor = palette.background.copy(alpha = 0.92f).toArgb()
+    }
+    val scheme = if (darkTheme) {
         darkColorScheme(
             primary = palette.primary,
             background = palette.background,

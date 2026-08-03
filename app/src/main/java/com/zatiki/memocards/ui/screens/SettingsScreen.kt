@@ -116,31 +116,30 @@ fun SettingsScreen(
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            "Por defecto arco. Tras revelar, toca un lateral. También barra de botones.",
+            "Tras revelar la respuesta, toca un lateral para el menú de arco.",
             color = palette.muted,
             fontSize = scaledSp(12f),
         )
         Spacer(Modifier.height(8.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            RatingLayout.entries.forEach { layout ->
-                FilterChip(
-                    selected = settings.ratingLayout == layout,
-                    onClick = { onRatingLayoutChange(layout) },
-                    label = {
-                        Text(
-                            when (layout) {
-                                RatingLayout.BAR -> "Barra de botones"
-                                RatingLayout.ARC_RIGHT -> "Arco inferior derecho"
-                                RatingLayout.ARC_LEFT -> "Arco inferior izquierdo"
-                            },
-                        )
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            FilterChip(
+                selected = settings.ratingLayout == RatingLayout.BAR,
+                onClick = { onRatingLayoutChange(RatingLayout.BAR) },
+                label = { Text("Barra de botones") },
+                modifier = Modifier.weight(1f),
+            )
+            FilterChip(
+                selected = settings.ratingLayout.isArc,
+                onClick = { onRatingLayoutChange(RatingLayout.ARC_RIGHT) },
+                label = { Text("Menú de arco") },
+                modifier = Modifier.weight(1f),
+            )
         }
 
-        if (settings.ratingLayout != RatingLayout.BAR) {
+        if (settings.ratingLayout.isArc) {
             Spacer(Modifier.height(20.dp))
             Text(
                 "Contenido del arco",

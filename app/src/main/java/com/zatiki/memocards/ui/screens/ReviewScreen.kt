@@ -1,7 +1,6 @@
 package com.zatiki.memocards.ui.screens
 
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -22,7 +21,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -274,7 +272,7 @@ fun ReviewScreen(
             !loading &&
             !finished &&
             current != null &&
-            settings.ratingLayout != RatingLayout.BAR
+            settings.ratingLayout.isArc
         ) {
             RatingArcMenu(
                 layout = settings.ratingLayout,
@@ -324,9 +322,9 @@ private fun RatingArcMenu(
     val expandProgress by animateFloatAsState(
         targetValue = if (expanded) 1f else 0f,
         animationSpec = if (expanded) {
-            tween(durationMillis = 160)
+            tween(durationMillis = 120)
         } else {
-            spring(dampingRatio = 0.9f, stiffness = 700f)
+            tween(durationMillis = 100)
         },
         label = "arcExpand",
     )
@@ -392,7 +390,7 @@ private fun RatingArcMenu(
             Row(Modifier.fillMaxSize()) {
                 Box(
                     Modifier
-                        .width(56.dp)
+                        .weight(1f)
                         .fillMaxHeight()
                         .pointerInput(Unit) {
                             detectTapGestures { offset ->
@@ -400,10 +398,10 @@ private fun RatingArcMenu(
                             }
                         },
                 )
-                Spacer(Modifier.weight(1f))
+                Spacer(Modifier.weight(2f))
                 Box(
                     Modifier
-                        .width(56.dp)
+                        .weight(1f)
                         .fillMaxHeight()
                         .pointerInput(Unit) {
                             detectTapGestures { offset ->
