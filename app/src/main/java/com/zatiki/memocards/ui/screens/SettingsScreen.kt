@@ -15,33 +15,63 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.zatiki.memocards.data.MemoRepository
 import com.zatiki.memocards.domain.ArcLabelMode
+import com.zatiki.memocards.domain.EstudiaProject
 import com.zatiki.memocards.domain.RatingLayout
+import com.zatiki.memocards.domain.SchedulerAlgorithm
+import com.zatiki.memocards.domain.SyncSettings
 import com.zatiki.memocards.domain.ThemeName
 import com.zatiki.memocards.domain.UiSettings
 import com.zatiki.memocards.ui.theme.LocalMemoPalette
 import com.zatiki.memocards.ui.theme.scaledSp
+import kotlinx.coroutines.launch
 
 @Composable
 fun SettingsScreen(
+    repo: MemoRepository,
     settings: UiSettings,
     onBack: () -> Unit,
     onThemeChange: (ThemeName) -> Unit,
     onFontScaleChange: (Float) -> Unit,
     onRatingLayoutChange: (RatingLayout) -> Unit,
     onArcLabelModeChange: (ArcLabelMode) -> Unit,
+    onSchedulerChange: (SchedulerAlgorithm) -> Unit,
 ) {
     val palette = LocalMemoPalette.current
+    val scope = rememberCoroutineScope()
+    var syncSettings by remember { mutableStateOf(SyncSettings()) }
+    var projects by remember { mutableStateOf<List<EstudiaProject>>(emptyList()) }
+    var syncMessage by remember { mutableStateOf<String?>(null) }
+    var testing by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        syncSettings = repo.getSyncSettings()
+    }
+
+    fun persistSync(next: SyncSettings) {
+        syncSettings = next
+        scope.launch { repo.saveSyncSettings(next) }
+    }
 
     Column(
         Modifier
@@ -174,6 +204,142 @@ fun SettingsScreen(
                     )
                 }
             }
+        }
+
+        Spacer(Modifier.height(24.dp))
+        Text(
+            "Algoritmo de repaso",
+            fontWeight = FontWeight.SemiBold,
+            color = palette.text,
+            fontSize = scaledSp(15f),
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SchedulerAlgorithm.entries.forEach { algo ->
+                FilterChip(
+                    selected = settings.scheduler == algo,
+                    onClick = { onSchedulerChange(algo) },
+                    label = {
+                        Text(
+                            when (algo) {
+                                SchedulerAlgorithm.SM2 -> "SM-2"
+                                SchedulerAlgorithm.FSRS -> "FSRS"
+                            },
+                        )
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+
+        Spacer(Modifier.height(28.dp))
+        Text(
+            "estudIA",
+            fontWeight = FontWeight.SemiBold,
+            color = palette.text,
+            fontSize = scaledSp(15f),
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Sincroniza barajas y envía estadísticas de repaso al servidor estudIA (puerto 30004).",
+            color = palette.muted,
+            fontSize = scaledSp(12f),
+        )
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(
+            value = syncSettings.baseUrl,
+            onValueChange = { persistSync(syncSettings.copy(baseUrl = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            label = { Text("URL del servidor") },
+        )
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = syncSettings.apiKey,
+            onValueChange = { persistSync(syncSettings.copy(apiKey = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            label = { Text("Clave X-KEY") },
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Button(
+                onClick = {
+                    scope.launch {
+                        testing = true
+                        syncMessage = if (repo.testEstudiaConnection(syncSettings)) {
+                            "Conexión correcta"
+                        } else {
+                            "No se pudo conectar"
+                        }
+                        testing = false
+                    }
+                },
+                enabled = !testing,
+                modifier = Modifier.weight(1f),
+            ) { Text(if (testing) "Probando…" else "Probar conexión") }
+            Button(
+                onClick = {
+                    scope.launch {
+                        projects = repo.listEstudiaProjects(syncSettings)
+                        syncMessage = if (projects.isEmpty()) "Sin proyectos" else "${projects.size} proyectos"
+                    }
+                },
+                modifier = Modifier.weight(1f),
+            ) { Text("Cargar proyectos") }
+        }
+        if (projects.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            Text("Asignatura", fontWeight = FontWeight.Medium, color = palette.text, fontSize = scaledSp(13f))
+            Spacer(Modifier.height(6.dp))
+            projects.forEach { project ->
+                FilterChip(
+                    selected = syncSettings.projectId == project.id,
+                    onClick = { persistSync(syncSettings.copy(projectId = project.id)) },
+                    label = { Text(project.name) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 6.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Sincronización automática", fontWeight = FontWeight.Medium, color = palette.text)
+                Text("Actualiza barajas importadas periódicamente", color = palette.muted, fontSize = scaledSp(12f))
+            }
+            Switch(
+                checked = syncSettings.autoSyncEnabled,
+                onCheckedChange = { persistSync(syncSettings.copy(autoSyncEnabled = it)) },
+            )
+        }
+        if (syncSettings.autoSyncEnabled) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Intervalo: ${syncSettings.autoSyncIntervalMinutes} min",
+                color = palette.text,
+                fontSize = scaledSp(13f),
+            )
+            Slider(
+                value = syncSettings.autoSyncIntervalMinutes.toFloat(),
+                onValueChange = {
+                    persistSync(syncSettings.copy(autoSyncIntervalMinutes = it.toInt().coerceIn(5, 240)))
+                },
+                valueRange = 5f..240f,
+                steps = 46,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        syncMessage?.let {
+            Spacer(Modifier.height(8.dp))
+            Text(it, color = palette.muted, fontSize = scaledSp(12f))
         }
 
         Spacer(Modifier.height(24.dp))

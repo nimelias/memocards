@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,7 +22,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -40,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.zatiki.memocards.data.MemoRepository
 import com.zatiki.memocards.domain.Deck
+import com.zatiki.memocards.domain.EstudiaDeckSummary
 import com.zatiki.memocards.domain.ThemeName
 import com.zatiki.memocards.domain.UiSettings
 import com.zatiki.memocards.ui.theme.LocalMemoPalette
@@ -58,6 +62,10 @@ fun DeckListScreen(
     val scope = rememberCoroutineScope()
     var decks by remember { mutableStateOf<List<Deck>>(emptyList()) }
     var name by remember { mutableStateOf("") }
+    var showImport by remember { mutableStateOf(false) }
+    var remoteDecks by remember { mutableStateOf<List<EstudiaDeckSummary>>(emptyList()) }
+    var importLoading by remember { mutableStateOf(false) }
+    var importMessage by remember { mutableStateOf<String?>(null) }
 
     suspend fun reload() {
         decks = repo.listDecks()
@@ -65,6 +73,8 @@ fun DeckListScreen(
 
     LaunchedEffect(Unit) {
         repo.ensureDemoDeckIfNeeded()
+        reload()
+        repo.syncEstudiaIfDue()
         reload()
     }
 
@@ -94,6 +104,38 @@ fun DeckListScreen(
             IconButton(onClick = onOpenSettings) {
                 Icon(Icons.Outlined.Settings, contentDescription = "Ajustes", tint = palette.text)
             }
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = {
+                    scope.launch {
+                        importLoading = true
+                        importMessage = null
+                        val settings = repo.getSyncSettings()
+                        remoteDecks = repo.listEstudiaDecks(settings)
+                        importLoading = false
+                        if (remoteDecks.isEmpty()) {
+                            importMessage = "Configura estudIA en Ajustes o no hay barajas"
+                        } else {
+                            showImport = true
+                        }
+                    }
+                },
+                enabled = !importLoading,
+            ) {
+                if (importLoading) {
+                    CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.height(16.dp).width(16.dp))
+                } else {
+                    Text("Importar estudIA")
+                }
+            }
+        }
+        importMessage?.let {
+            Spacer(Modifier.height(6.dp))
+            Text(it, color = palette.muted, fontSize = scaledSp(12f))
         }
 
         Spacer(Modifier.height(12.dp))
@@ -151,5 +193,36 @@ fun DeckListScreen(
                 }
             }
         }
+    }
+
+    if (showImport) {
+        AlertDialog(
+            onDismissRequest = { showImport = false },
+            title = { Text("Barajas en estudIA") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    remoteDecks.forEach { remote ->
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    importLoading = true
+                                    val deckId = repo.importEstudiaDeck(remote.id)
+                                    importLoading = false
+                                    showImport = false
+                                    reload()
+                                    decks.find { it.id == deckId }?.let(onOpenDeck)
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("${remote.title} (${remote.cardCount} cartas)")
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showImport = false }) { Text("Cerrar") }
+            },
+        )
     }
 }

@@ -90,6 +90,9 @@ class MainActivity : ComponentActivity() {
                             deckName = deckName,
                             onBack = { nav.popBackStack() },
                             onReview = { nav.navigate(Routes.Review.create(deckId)) },
+                            onPreviewReview = { days ->
+                                nav.navigate(Routes.Review.create(deckId, days))
+                            },
                             onAddNote = { nav.navigate(Routes.NoteEditor.create(deckId)) },
                         )
                     }
@@ -109,9 +112,16 @@ class MainActivity : ComponentActivity() {
 
                     composable(
                         route = Routes.Review.route,
-                        arguments = listOf(navArgument("deckId") { type = NavType.LongType }),
+                        arguments = listOf(
+                            navArgument("deckId") { type = NavType.LongType },
+                            navArgument("advanceDays") {
+                                type = NavType.IntType
+                                defaultValue = 0
+                            },
+                        ),
                     ) { entry ->
                         val deckId = entry.arguments?.getLong("deckId") ?: return@composable
+                        val advanceDays = entry.arguments?.getInt("advanceDays") ?: 0
                         var deckName by remember { mutableStateOf("Mazo") }
                         LaunchedEffect(deckId) {
                             deckName = repo.getDeck(deckId)?.name ?: "Mazo"
@@ -121,12 +131,14 @@ class MainActivity : ComponentActivity() {
                             deckId = deckId,
                             deckName = deckName,
                             settings = settings,
+                            advanceDays = advanceDays,
                             onDone = { nav.popBackStack() },
                         )
                     }
 
                     composable(Routes.Settings.route) {
                         SettingsScreen(
+                            repo = repo,
                             settings = settings,
                             onBack = { nav.popBackStack() },
                             onThemeChange = { theme ->
@@ -148,6 +160,11 @@ class MainActivity : ComponentActivity() {
                             onArcLabelModeChange = { mode ->
                                 scope.launch {
                                     settings = repo.saveUiSettings(settings.copy(arcLabelMode = mode))
+                                }
+                            },
+                            onSchedulerChange = { scheduler ->
+                                scope.launch {
+                                    settings = repo.saveUiSettings(settings.copy(scheduler = scheduler))
                                 }
                             },
                         )

@@ -8,8 +8,8 @@ sealed class Routes(val route: String) {
     data object NoteEditor : Routes("note-editor/{deckId}") {
         fun create(deckId: Long) = "note-editor/$deckId"
     }
-    data object Review : Routes("review/{deckId}") {
-        fun create(deckId: Long) = "review/$deckId"
+    data object Review : Routes("review/{deckId}/{advanceDays}") {
+        fun create(deckId: Long, advanceDays: Int = 0) = "review/$deckId/$advanceDays"
     }
     data object Settings : Routes("settings")
 }

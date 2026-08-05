@@ -28,6 +28,8 @@ data class Deck(
     val studyDays: Int? = null,
     val minRepetitions: Int = 1,
     val studyStartAt: Long? = null,
+    val remoteDeckId: Long? = null,
+    val source: String? = null,
     val createdAt: Long,
     val updatedAt: Long,
 )
@@ -49,6 +51,7 @@ data class Card(
     val repetitions: Int = 0,
     val lapses: Int = 0,
     val queue: CardQueue = CardQueue.NEW,
+    val remoteCardId: Long? = null,
     val createdAt: Long,
     val updatedAt: Long,
 )
@@ -69,11 +72,59 @@ data class DeckSettings(
     val minRepetitions: Int,
 )
 
+/** Algoritmo de repetición espaciada. */
+enum class SchedulerAlgorithm(val value: String) {
+    SM2("sm2"),
+    FSRS("fsrs");
+
+    companion object {
+        fun from(value: String?): SchedulerAlgorithm =
+            entries.find { it.value == value } ?: SM2
+    }
+}
+
 data class UiSettings(
     val theme: ThemeName = ThemeName.LIGHT,
     val fontScale: Float = 1f,
     val ratingLayout: RatingLayout = RatingLayout.ARC_RIGHT,
     val arcLabelMode: ArcLabelMode = ArcLabelMode.ICONS,
+    val scheduler: SchedulerAlgorithm = SchedulerAlgorithm.SM2,
+)
+
+/** Conexión con el bridge estudIA (puerto 30004). */
+data class SyncSettings(
+    val baseUrl: String = "http://10.10.10.1:30004",
+    val apiKey: String = "123",
+    val projectId: Long? = null,
+    val autoSyncEnabled: Boolean = false,
+    val autoSyncIntervalMinutes: Int = 30,
+    val lastSyncAt: Long = 0L,
+)
+
+data class EstudiaProject(
+    val id: Long,
+    val name: String,
+)
+
+data class EstudiaDeckSummary(
+    val id: Long,
+    val title: String,
+    val cardCount: Int,
+    val description: String? = null,
+)
+
+data class EstudiaRemoteCard(
+    val id: Long,
+    val front: String,
+    val back: String,
+    val updatedAt: Long,
+)
+
+data class SyncResult(
+    val importedDecks: Int = 0,
+    val updatedCards: Int = 0,
+    val pushedReviews: Int = 0,
+    val message: String = "",
 )
 
 enum class ThemeName(val value: String) {

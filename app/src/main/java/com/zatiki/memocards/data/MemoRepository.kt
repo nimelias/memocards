@@ -9,14 +9,32 @@ import com.zatiki.memocards.domain.DeckSettings
 import com.zatiki.memocards.domain.DeckStats
 import com.zatiki.memocards.domain.Note
 import com.zatiki.memocards.domain.NoteFields
+import com.zatiki.memocards.domain.EstudiaDeckSummary
+import com.zatiki.memocards.domain.EstudiaProject
 import com.zatiki.memocards.domain.RatingLayout
 import com.zatiki.memocards.domain.ReviewRating
+import com.zatiki.memocards.domain.Fsrs
+import com.zatiki.memocards.domain.SchedulerAlgorithm
 import com.zatiki.memocards.domain.Sm2
+import com.zatiki.memocards.domain.SyncResult
+import com.zatiki.memocards.domain.SyncSettings
 import com.zatiki.memocards.domain.ThemeName
 import com.zatiki.memocards.domain.UiSettings
 import org.json.JSONObject
 
 class MemoRepository(private val dao: MemoDao) {
+
+    private fun estudiaApi(settings: SyncSettings): EstudiaApi? {
+        if (settings.baseUrl.isBlank() || settings.apiKey.isBlank()) return null
+        return EstudiaApi(settings.baseUrl, settings.apiKey)
+    }
+
+    fun ratingToRemote(rating: ReviewRating): String = when (rating) {
+        1 -> "again"
+        2 -> "hard"
+        3 -> "good"
+        else -> "easy"
+    }
 
     fun parseFields(raw: String): NoteFields {
         return try {
@@ -48,6 +66,8 @@ class MemoRepository(private val dao: MemoDao) {
         studyDays = studyDays,
         minRepetitions = minRepetitions,
         studyStartAt = studyStartAt,
+        remoteDeckId = remoteDeckId,
+        source = source,
         createdAt = createdAt,
         updatedAt = updatedAt,
     )
@@ -69,6 +89,7 @@ class MemoRepository(private val dao: MemoDao) {
         repetitions = repetitions,
         lapses = lapses,
         queue = CardQueue.from(queue),
+        remoteCardId = remoteCardId,
         createdAt = createdAt,
         updatedAt = updatedAt,
     )
@@ -153,10 +174,10 @@ class MemoRepository(private val dao: MemoDao) {
         return DeckStats(newCount, dueCount, total)
     }
 
-    suspend fun getDueCards(deckId: Long, limit: Int = 50): List<CardWithNote> {
+    suspend fun getDueCards(deckId: Long, limit: Int = 50, advanceDays: Int = 0): List<CardWithNote> {
         val deck = getDeck(deckId)
         val ts = System.currentTimeMillis()
-        val endOfDay = Sm2.startOfDay(ts) + MS_PER_DAY - 1
+        val endOfDay = Sm2.startOfDay(ts) + MS_PER_DAY - 1 + advanceDays * MS_PER_DAY
         val studyEnd = if (deck?.studyDays != null && deck.studyStartAt != null) {
             Sm2.studyEndDate(deck.studyStartAt, deck.studyDays)
         } else null
@@ -187,12 +208,20 @@ class MemoRepository(private val dao: MemoDao) {
         }
     }
 
-    suspend fun reviewCard(cardId: Long, rating: ReviewRating): Card? {
+    suspend fun reviewCard(
+        cardId: Long,
+        rating: ReviewRating,
+        elapsedMs: Long = 0L,
+        scheduler: SchedulerAlgorithm = SchedulerAlgorithm.SM2,
+    ): Card? {
         val entity = dao.getCard(cardId) ?: return null
         val card = entity.toDomain()
         val note = dao.getNote(card.noteId)
         val deck = note?.let { dao.getDeck(it.deckId)?.toDomain() }
-        val result = Sm2.scheduleReview(card, rating)
+        val result = when (scheduler) {
+            SchedulerAlgorithm.FSRS -> Fsrs.scheduleReview(card, rating)
+            SchedulerAlgorithm.SM2 -> Sm2.scheduleReview(card, rating)
+        }
         val cappedDue = if (deck != null) {
             Sm2.capDueToStudyPeriod(result.due, deck.studyStartAt, deck.studyDays)
         } else result.due
@@ -217,6 +246,9 @@ class MemoRepository(private val dao: MemoDao) {
                 reviewedAt = ts,
             ),
         )
+        entity.remoteCardId?.let { remoteId ->
+            pushReview(remoteId, rating, elapsedMs)
+        }
         return card.copy(
             due = cappedDue,
             interval = result.interval,
@@ -228,17 +260,43 @@ class MemoRepository(private val dao: MemoDao) {
         )
     }
 
+    private suspend fun pushReview(remoteCardId: Long, rating: ReviewRating, elapsedMs: Long) {
+        val settings = getSyncSettings()
+        val api = estudiaApi(settings) ?: run {
+            queuePendingReview(remoteCardId, rating, elapsedMs)
+            return
+        }
+        try {
+            api.postReview(remoteCardId, ratingToRemote(rating), elapsedMs)
+        } catch (_: Exception) {
+            queuePendingReview(remoteCardId, rating, elapsedMs)
+        }
+    }
+
+    private suspend fun queuePendingReview(remoteCardId: Long, rating: ReviewRating, elapsedMs: Long) {
+        dao.insertPendingReview(
+            PendingReviewEntity(
+                remoteCardId = remoteCardId,
+                rating = ratingToRemote(rating),
+                elapsedMs = elapsedMs,
+                createdAt = System.currentTimeMillis(),
+            ),
+        )
+    }
+
     suspend fun getUiSettings(): UiSettings {
         val map = dao.getUiSettingsRows().associate { it.key to it.value }
         val theme = ThemeName.from(map["ui.theme"])
         val font = map["ui.fontScale"]?.toFloatOrNull()?.coerceIn(0.9f, 1.4f) ?: 1f
         val ratingLayout = RatingLayout.from(map["ui.ratingLayout"])
         val arcLabelMode = ArcLabelMode.from(map["ui.arcLabelMode"])
+        val scheduler = SchedulerAlgorithm.from(map["ui.scheduler"])
         return UiSettings(
             theme = theme,
             fontScale = font,
             ratingLayout = ratingLayout,
             arcLabelMode = arcLabelMode,
+            scheduler = scheduler,
         )
     }
 
@@ -247,7 +305,160 @@ class MemoRepository(private val dao: MemoDao) {
         dao.upsertSetting(AppSettingEntity("ui.fontScale", next.fontScale.toString()))
         dao.upsertSetting(AppSettingEntity("ui.ratingLayout", next.ratingLayout.value))
         dao.upsertSetting(AppSettingEntity("ui.arcLabelMode", next.arcLabelMode.value))
+        dao.upsertSetting(AppSettingEntity("ui.scheduler", next.scheduler.value))
         return next
+    }
+
+    suspend fun getSyncSettings(): SyncSettings {
+        val map = dao.getSyncSettingsRows().associate { it.key to it.value }
+        return SyncSettings(
+            baseUrl = map[SYNC_BASE_URL_KEY] ?: SyncSettings().baseUrl,
+            apiKey = map[SYNC_API_KEY_KEY] ?: SyncSettings().apiKey,
+            projectId = map[SYNC_PROJECT_ID_KEY]?.toLongOrNull(),
+            autoSyncEnabled = map[SYNC_AUTO_KEY] == "1",
+            autoSyncIntervalMinutes = map[SYNC_INTERVAL_KEY]?.toIntOrNull()?.coerceIn(5, 24 * 60) ?: 30,
+            lastSyncAt = map[SYNC_LAST_AT_KEY]?.toLongOrNull() ?: 0L,
+        )
+    }
+
+    suspend fun saveSyncSettings(next: SyncSettings): SyncSettings {
+        dao.upsertSetting(AppSettingEntity(SYNC_BASE_URL_KEY, next.baseUrl.trim()))
+        dao.upsertSetting(AppSettingEntity(SYNC_API_KEY_KEY, next.apiKey))
+        dao.upsertSetting(
+            AppSettingEntity(
+                SYNC_PROJECT_ID_KEY,
+                next.projectId?.toString().orEmpty(),
+            ),
+        )
+        dao.upsertSetting(AppSettingEntity(SYNC_AUTO_KEY, if (next.autoSyncEnabled) "1" else "0"))
+        dao.upsertSetting(AppSettingEntity(SYNC_INTERVAL_KEY, next.autoSyncIntervalMinutes.toString()))
+        dao.upsertSetting(AppSettingEntity(SYNC_LAST_AT_KEY, next.lastSyncAt.toString()))
+        return next
+    }
+
+    suspend fun testEstudiaConnection(settings: SyncSettings): Boolean {
+        val api = estudiaApi(settings) ?: return false
+        return api.health()
+    }
+
+    suspend fun listEstudiaProjects(settings: SyncSettings): List<EstudiaProject> {
+        val api = estudiaApi(settings) ?: return emptyList()
+        return api.listProjects()
+    }
+
+    suspend fun listEstudiaDecks(settings: SyncSettings): List<EstudiaDeckSummary> {
+        val projectId = settings.projectId ?: return emptyList()
+        val api = estudiaApi(settings) ?: return emptyList()
+        return api.listDecks(projectId)
+    }
+
+    suspend fun importEstudiaDeck(remoteDeckId: Long): Long {
+        val settings = getSyncSettings()
+        val api = estudiaApi(settings) ?: throw EstudiaApiException("Configura la conexión con estudIA")
+        val (title, remoteCards) = api.fetchDeckCards(remoteDeckId)
+        val ts = System.currentTimeMillis()
+        val existing = dao.getDeckByRemoteId(remoteDeckId)
+        val deckId = if (existing != null) {
+            dao.updateDeck(existing.copy(name = title, updatedAt = ts))
+            existing.id
+        } else {
+            dao.insertDeck(
+                DeckEntity(
+                    name = title,
+                    remoteDeckId = remoteDeckId,
+                    source = SOURCE_ESTUDIA,
+                    createdAt = ts,
+                    updatedAt = ts,
+                ),
+            )
+        }
+        var updated = 0
+        for (remote in remoteCards) {
+            val fields = NoteFields(front = remote.front, back = remote.back)
+            val localCard = dao.getCardByRemoteId(remote.id)
+            if (localCard != null) {
+                val note = dao.getNote(localCard.noteId) ?: continue
+                dao.updateNote(
+                    note.copy(
+                        fieldsJson = fieldsToJson(fields),
+                        updatedAt = ts,
+                    ),
+                )
+                updated += 1
+            } else {
+                val noteId = dao.insertNote(
+                    NoteEntity(
+                        deckId = deckId,
+                        fieldsJson = fieldsToJson(fields),
+                        createdAt = ts,
+                        updatedAt = ts,
+                    ),
+                )
+                dao.insertCard(
+                    CardEntity(
+                        noteId = noteId,
+                        due = ts,
+                        remoteCardId = remote.id,
+                        createdAt = ts,
+                        updatedAt = ts,
+                    ),
+                )
+                updated += 1
+            }
+        }
+        saveSyncSettings(getSyncSettings().copy(lastSyncAt = ts))
+        return deckId
+    }
+
+    suspend fun syncEstudiaIfDue(): SyncResult {
+        val settings = getSyncSettings()
+        if (!settings.autoSyncEnabled || settings.projectId == null) {
+            return SyncResult(message = "Sincronización automática desactivada")
+        }
+        val intervalMs = settings.autoSyncIntervalMinutes * 60_000L
+        val now = System.currentTimeMillis()
+        if (settings.lastSyncAt > 0 && now - settings.lastSyncAt < intervalMs) {
+            return SyncResult(message = "Sincronización reciente")
+        }
+        return syncAllEstudiaDecks(settings)
+    }
+
+    suspend fun syncAllEstudiaDecks(settings: SyncSettings = getSyncSettings()): SyncResult {
+        val api = estudiaApi(settings) ?: return SyncResult(message = "Sin conexión configurada")
+        val projectId = settings.projectId ?: return SyncResult(message = "Sin proyecto seleccionado")
+        var imported = 0
+        var updatedCards = 0
+        for (summary in api.listDecks(projectId)) {
+            val before = dao.getDeckByRemoteId(summary.id)?.id
+            val deckId = importEstudiaDeck(summary.id)
+            if (before == null) imported += 1
+            updatedCards += summary.cardCount
+            if (deckId <= 0) continue
+        }
+        val pushed = flushPendingReviews(settings)
+        val ts = System.currentTimeMillis()
+        saveSyncSettings(settings.copy(lastSyncAt = ts))
+        return SyncResult(
+            importedDecks = imported,
+            updatedCards = updatedCards,
+            pushedReviews = pushed,
+            message = "Sincronizado",
+        )
+    }
+
+    suspend fun flushPendingReviews(settings: SyncSettings = getSyncSettings()): Int {
+        val api = estudiaApi(settings) ?: return 0
+        var pushed = 0
+        for (pending in dao.listPendingReviews()) {
+            try {
+                api.postReview(pending.remoteCardId, pending.rating, pending.elapsedMs)
+                dao.deletePendingReview(pending.id)
+                pushed += 1
+            } catch (_: Exception) {
+                break
+            }
+        }
+        return pushed
     }
 
     /** Primera instalación vacía: mazo «Trivial» con preguntas tipo trivial. */
@@ -287,6 +498,13 @@ class MemoRepository(private val dao: MemoDao) {
 
     companion object {
         private const val MS_PER_DAY = 86_400_000L
+        private const val SOURCE_ESTUDIA = "estudia"
+        private const val SYNC_BASE_URL_KEY = "sync.baseUrl"
+        private const val SYNC_API_KEY_KEY = "sync.apiKey"
+        private const val SYNC_PROJECT_ID_KEY = "sync.projectId"
+        private const val SYNC_AUTO_KEY = "sync.auto"
+        private const val SYNC_INTERVAL_KEY = "sync.intervalMin"
+        private const val SYNC_LAST_AT_KEY = "sync.lastAt"
         private const val DEMO_SEEDED_KEY = "demo.seeded"
         private const val DEMO_TRIVIAL_VERSION_KEY = "demo.trivial.version"
         private const val DEMO_TRIVIAL_VERSION = 2

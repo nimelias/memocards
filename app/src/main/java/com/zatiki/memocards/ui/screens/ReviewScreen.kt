@@ -107,6 +107,7 @@ fun ReviewScreen(
     deckId: Long,
     deckName: String,
     settings: UiSettings,
+    advanceDays: Int = 0,
     onDone: () -> Unit,
 ) {
     val palette = LocalMemoPalette.current
@@ -117,10 +118,11 @@ fun ReviewScreen(
     var revealed by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
     var finished by remember { mutableStateOf(false) }
+    var revealedAt by remember { mutableStateOf(0L) }
 
-    LaunchedEffect(deckId) {
+    LaunchedEffect(deckId, advanceDays) {
         loading = true
-        queue = repo.getDueCards(deckId, 50)
+        queue = repo.getDueCards(deckId, 50, advanceDays)
         index = 0
         revealed = false
         finished = queue.isEmpty()
@@ -131,18 +133,22 @@ fun ReviewScreen(
 
     fun revealBack() {
         revealed = true
+        revealedAt = System.currentTimeMillis()
     }
 
     fun advanceAfterRating(cardId: Long, rating: ReviewRating) {
-        // Primero ocultar reverso y avanzar de carta (mismo frame); luego persistir SM-2.
+        val elapsedMs = if (revealedAt > 0L) {
+            (System.currentTimeMillis() - revealedAt).coerceAtLeast(0L)
+        } else 0L
         revealed = false
+        revealedAt = 0L
         if (index + 1 >= queue.size) {
             finished = true
         } else {
             index += 1
         }
         scope.launch {
-            repo.reviewCard(cardId, rating)
+            repo.reviewCard(cardId, rating, elapsedMs, settings.scheduler)
         }
     }
 

@@ -21,6 +21,8 @@ data class DeckEntity(
     @ColumnInfo(name = "study_days") val studyDays: Int? = null,
     @ColumnInfo(name = "min_repetitions") val minRepetitions: Int = 1,
     @ColumnInfo(name = "study_start_at") val studyStartAt: Long? = null,
+    @ColumnInfo(name = "remote_deck_id") val remoteDeckId: Long? = null,
+    val source: String? = null,
     @ColumnInfo(name = "created_at") val createdAt: Long,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,
 )
@@ -66,6 +68,7 @@ data class CardEntity(
     val repetitions: Int = 0,
     val lapses: Int = 0,
     val queue: String = "new",
+    @ColumnInfo(name = "remote_card_id") val remoteCardId: Long? = null,
     @ColumnInfo(name = "created_at") val createdAt: Long,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,
 )
@@ -89,6 +92,15 @@ data class ReviewLogEntity(
     @ColumnInfo(name = "interval_before") val intervalBefore: Double,
     @ColumnInfo(name = "interval_after") val intervalAfter: Double,
     @ColumnInfo(name = "reviewed_at") val reviewedAt: Long,
+)
+
+@Entity(tableName = "pending_reviews")
+data class PendingReviewEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    @ColumnInfo(name = "remote_card_id") val remoteCardId: Long,
+    val rating: String,
+    @ColumnInfo(name = "elapsed_ms") val elapsedMs: Long,
+    @ColumnInfo(name = "created_at") val createdAt: Long,
 )
 
 @Entity(tableName = "app_settings")
@@ -129,6 +141,9 @@ interface MemoDao {
     @Query("SELECT * FROM decks WHERE id = :id")
     suspend fun getDeck(id: Long): DeckEntity?
 
+    @Query("SELECT * FROM decks WHERE remote_deck_id = :remoteId LIMIT 1")
+    suspend fun getDeckByRemoteId(remoteId: Long): DeckEntity?
+
     @Insert
     suspend fun insertDeck(deck: DeckEntity): Long
 
@@ -146,6 +161,9 @@ interface MemoDao {
 
     @Update
     suspend fun updateNote(note: NoteEntity)
+
+    @Query("SELECT * FROM cards WHERE remote_card_id = :remoteId LIMIT 1")
+    suspend fun getCardByRemoteId(remoteId: Long): CardEntity?
 
     @Insert
     suspend fun insertCard(card: CardEntity): Long
@@ -220,8 +238,23 @@ interface MemoDao {
         limit: Int,
     ): List<CardNoteRow>
 
-    @Query("SELECT * FROM app_settings WHERE `key` IN ('ui.theme', 'ui.fontScale')")
+    @Query("SELECT * FROM app_settings WHERE `key` LIKE 'ui.%'")
     suspend fun getUiSettingsRows(): List<AppSettingEntity>
+
+    @Query("SELECT * FROM app_settings WHERE `key` LIKE 'sync.%'")
+    suspend fun getSyncSettingsRows(): List<AppSettingEntity>
+
+    @Query("SELECT * FROM pending_reviews ORDER BY created_at ASC")
+    suspend fun listPendingReviews(): List<PendingReviewEntity>
+
+    @Insert
+    suspend fun insertPendingReview(review: PendingReviewEntity): Long
+
+    @Query("DELETE FROM pending_reviews WHERE id = :id")
+    suspend fun deletePendingReview(id: Long)
+
+    @Query("SELECT * FROM decks WHERE source = 'estudia' AND remote_deck_id IS NOT NULL")
+    suspend fun listEstudiaDecks(): List<DeckEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertSetting(setting: AppSettingEntity)
@@ -233,9 +266,10 @@ interface MemoDao {
         NoteEntity::class,
         CardEntity::class,
         ReviewLogEntity::class,
+        PendingReviewEntity::class,
         AppSettingEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 abstract class MemoDatabase : RoomDatabase() {

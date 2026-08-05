@@ -51,6 +51,7 @@ fun DeckDetailScreen(
     deckName: String,
     onBack: () -> Unit,
     onReview: () -> Unit,
+    onPreviewReview: (advanceDays: Int) -> Unit,
     onAddNote: () -> Unit,
 ) {
     val palette = LocalMemoPalette.current
@@ -103,6 +104,13 @@ fun DeckDetailScreen(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = onReview, modifier = Modifier.weight(1f)) { Text("Repasar") }
             OutlinedButton(onClick = onAddNote, modifier = Modifier.weight(1f)) { Text("+ Tarjeta") }
+        }
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(
+            onClick = { onPreviewReview(7) },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Vista previa (+7 días)")
         }
 
         Spacer(Modifier.height(12.dp))
