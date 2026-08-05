@@ -41,7 +41,7 @@ class FsrsScheduler(
         )
     }
 
-    fun preview(card: FsrsCardState, nowMillis: Long = System.currentTimeMillis()): List<FsrsGradePreview> {
+    private fun preview(card: FsrsCardState, nowMillis: Long = System.currentTimeMillis()): List<FsrsGradePreview> {
         return FsrsRating.entries.map { rating ->
             val outcome = computeOutcome(card, rating, nowMillis)
             FsrsGradePreview(
