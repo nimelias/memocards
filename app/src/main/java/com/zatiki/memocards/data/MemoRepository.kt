@@ -423,7 +423,7 @@ class MemoRepository(private val dao: MemoDao) {
         return syncAllEstudiaDecks(settings)
     }
 
-    suspend fun syncAllEstudiaDecks(settings: SyncSettings = getSyncSettings()): SyncResult {
+    suspend fun syncAllEstudiaDecks(settings: SyncSettings): SyncResult {
         val api = estudiaApi(settings) ?: return SyncResult(message = "Sin conexión configurada")
         val projectId = settings.projectId ?: return SyncResult(message = "Sin proyecto seleccionado")
         var imported = 0
@@ -446,7 +446,7 @@ class MemoRepository(private val dao: MemoDao) {
         )
     }
 
-    suspend fun flushPendingReviews(settings: SyncSettings = getSyncSettings()): Int {
+    suspend fun flushPendingReviews(settings: SyncSettings): Int {
         val api = estudiaApi(settings) ?: return 0
         var pushed = 0
         for (pending in dao.listPendingReviews()) {
