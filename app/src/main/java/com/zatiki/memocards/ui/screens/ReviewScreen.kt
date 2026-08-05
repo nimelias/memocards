@@ -148,7 +148,7 @@ fun ReviewScreen(
             index += 1
         }
         scope.launch {
-            repo.reviewCard(cardId, rating, elapsedMs, settings.scheduler)
+            repo.reviewCard(cardId, rating, elapsedMs)
         }
     }
 

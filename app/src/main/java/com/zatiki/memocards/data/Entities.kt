@@ -63,8 +63,11 @@ data class CardEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     @ColumnInfo(name = "note_id") val noteId: Long,
     val due: Long,
-    val interval: Double = 0.0,
-    @ColumnInfo(name = "ease_factor") val easeFactor: Double = 2.5,
+    val stability: Double = 0.0,
+    val difficulty: Double = 0.0,
+    @ColumnInfo(name = "interval_days") val intervalDays: Int = 0,
+    val phase: Int = 0,
+    @ColumnInfo(name = "last_review_at") val lastReviewAt: Long? = null,
     val repetitions: Int = 0,
     val lapses: Int = 0,
     val queue: String = "new",
@@ -113,8 +116,11 @@ data class CardNoteRow(
     @ColumnInfo(name = "id") val cardId: Long,
     @ColumnInfo(name = "note_id") val noteId: Long,
     val due: Long,
-    val interval: Double,
-    @ColumnInfo(name = "ease_factor") val easeFactor: Double,
+    val stability: Double,
+    val difficulty: Double,
+    @ColumnInfo(name = "interval_days") val intervalDays: Int,
+    val phase: Int,
+    @ColumnInfo(name = "last_review_at") val lastReviewAt: Long?,
     val repetitions: Int,
     val lapses: Int,
     val queue: String,
@@ -183,7 +189,8 @@ interface MemoDao {
     @Query(
         """
         UPDATE cards
-        SET due = :due, interval = 0, ease_factor = 2.5, repetitions = 0, lapses = 0,
+        SET due = :due, stability = 0, difficulty = 0, interval_days = 0, phase = 0,
+            last_review_at = NULL, repetitions = 0, lapses = 0,
             queue = 'new', updated_at = :updatedAt
         WHERE note_id IN (SELECT id FROM notes WHERE deck_id = :deckId)
         """,
@@ -213,7 +220,8 @@ interface MemoDao {
 
     @Query(
         """
-        SELECT c.id, c.note_id, c.due, c.interval, c.ease_factor, c.repetitions, c.lapses, c.queue,
+        SELECT c.id, c.note_id, c.due, c.stability, c.difficulty, c.interval_days, c.phase,
+               c.last_review_at, c.repetitions, c.lapses, c.queue,
                c.created_at, c.updated_at,
                n.id AS n_id, n.deck_id, n.fields_json, n.created_at AS n_created_at, n.updated_at AS n_updated_at
         FROM cards c
@@ -269,7 +277,7 @@ interface MemoDao {
         PendingReviewEntity::class,
         AppSettingEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 abstract class MemoDatabase : RoomDatabase() {

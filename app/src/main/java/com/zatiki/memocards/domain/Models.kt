@@ -1,5 +1,7 @@
 package com.zatiki.memocards.domain
 
+import com.zatiki.memocards.fsrs.FsrsPhase
+
 enum class CardQueue(val value: String) {
     NEW("new"),
     LEARNING("learning"),
@@ -8,10 +10,16 @@ enum class CardQueue(val value: String) {
     companion object {
         fun from(value: String): CardQueue =
             entries.find { it.value == value } ?: NEW
+
+        fun fromPhase(phase: FsrsPhase): CardQueue = when (phase) {
+            FsrsPhase.Added -> NEW
+            FsrsPhase.ReLearning -> LEARNING
+            FsrsPhase.Review -> REVIEW
+        }
     }
 }
 
-/** SM-2 ratings: 1=Again, 2=Hard, 3=Good, 4=Easy */
+/** Calificaciones de repaso: 1=Again, 2=Hard, 3=Good, 4=Easy */
 typealias ReviewRating = Int
 
 data class NoteFields(
@@ -46,8 +54,11 @@ data class Card(
     val id: Long = 0,
     val noteId: Long,
     val due: Long,
-    val interval: Double = 0.0,
-    val easeFactor: Double = 2.5,
+    val stability: Double = 0.0,
+    val difficulty: Double = 0.0,
+    val intervalDays: Int = 0,
+    val phase: FsrsPhase = FsrsPhase.Added,
+    val lastReviewAt: Long? = null,
     val repetitions: Int = 0,
     val lapses: Int = 0,
     val queue: CardQueue = CardQueue.NEW,
@@ -72,23 +83,11 @@ data class DeckSettings(
     val minRepetitions: Int,
 )
 
-/** Algoritmo de repetición espaciada. */
-enum class SchedulerAlgorithm(val value: String) {
-    SM2("sm2"),
-    FSRS("fsrs");
-
-    companion object {
-        fun from(value: String?): SchedulerAlgorithm =
-            entries.find { it.value == value } ?: SM2
-    }
-}
-
 data class UiSettings(
     val theme: ThemeName = ThemeName.LIGHT,
     val fontScale: Float = 1f,
     val ratingLayout: RatingLayout = RatingLayout.ARC_RIGHT,
     val arcLabelMode: ArcLabelMode = ArcLabelMode.ICONS,
-    val scheduler: SchedulerAlgorithm = SchedulerAlgorithm.SM2,
 )
 
 /** Conexión con el bridge estudIA (puerto 30004). */
@@ -162,12 +161,3 @@ enum class RatingLayout(val value: String) {
             entries.find { it.value == value } ?: ARC_RIGHT
     }
 }
-
-data class ScheduleResult(
-    val due: Long,
-    val interval: Double,
-    val easeFactor: Double,
-    val repetitions: Int,
-    val lapses: Int,
-    val queue: CardQueue,
-)

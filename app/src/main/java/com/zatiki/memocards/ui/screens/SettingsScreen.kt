@@ -38,7 +38,6 @@ import com.zatiki.memocards.data.MemoRepository
 import com.zatiki.memocards.domain.ArcLabelMode
 import com.zatiki.memocards.domain.EstudiaProject
 import com.zatiki.memocards.domain.RatingLayout
-import com.zatiki.memocards.domain.SchedulerAlgorithm
 import com.zatiki.memocards.domain.SyncSettings
 import com.zatiki.memocards.domain.ThemeName
 import com.zatiki.memocards.domain.UiSettings
@@ -55,7 +54,6 @@ fun SettingsScreen(
     onFontScaleChange: (Float) -> Unit,
     onRatingLayoutChange: (RatingLayout) -> Unit,
     onArcLabelModeChange: (ArcLabelMode) -> Unit,
-    onSchedulerChange: (SchedulerAlgorithm) -> Unit,
 ) {
     val palette = LocalMemoPalette.current
     val scope = rememberCoroutineScope()
@@ -206,32 +204,6 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(Modifier.height(24.dp))
-        Text(
-            "Algoritmo de repaso",
-            fontWeight = FontWeight.SemiBold,
-            color = palette.text,
-            fontSize = scaledSp(15f),
-        )
-        Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SchedulerAlgorithm.entries.forEach { algo ->
-                FilterChip(
-                    selected = settings.scheduler == algo,
-                    onClick = { onSchedulerChange(algo) },
-                    label = {
-                        Text(
-                            when (algo) {
-                                SchedulerAlgorithm.SM2 -> "SM-2"
-                                SchedulerAlgorithm.FSRS -> "FSRS"
-                            },
-                        )
-                    },
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-
         Spacer(Modifier.height(28.dp))
         Text(
             "estudIA",
@@ -344,7 +316,7 @@ fun SettingsScreen(
 
         Spacer(Modifier.height(24.dp))
         Text(
-            "MemoCards nativo · Kotlin + Jetpack Compose + Room",
+            "MemoCards nativo · Kotlin + FSRS-6 + Jetpack Compose + Room",
             color = palette.muted,
             fontSize = scaledSp(12f),
         )

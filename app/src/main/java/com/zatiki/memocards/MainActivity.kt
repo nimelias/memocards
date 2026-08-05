@@ -162,11 +162,6 @@ class MainActivity : ComponentActivity() {
                                     settings = repo.saveUiSettings(settings.copy(arcLabelMode = mode))
                                 }
                             },
-                            onSchedulerChange = { scheduler ->
-                                scope.launch {
-                                    settings = repo.saveUiSettings(settings.copy(scheduler = scheduler))
-                                }
-                            },
                         )
                     }
                 }

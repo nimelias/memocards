@@ -13,9 +13,11 @@ import com.zatiki.memocards.domain.EstudiaDeckSummary
 import com.zatiki.memocards.domain.EstudiaProject
 import com.zatiki.memocards.domain.RatingLayout
 import com.zatiki.memocards.domain.ReviewRating
-import com.zatiki.memocards.domain.Fsrs
-import com.zatiki.memocards.domain.SchedulerAlgorithm
-import com.zatiki.memocards.domain.Sm2
+import com.zatiki.memocards.fsrs.FsrsCardState
+import com.zatiki.memocards.fsrs.FsrsPhase
+import com.zatiki.memocards.fsrs.FsrsRating
+import com.zatiki.memocards.fsrs.FsrsScheduler
+import com.zatiki.memocards.fsrs.StudyPeriod
 import com.zatiki.memocards.domain.SyncResult
 import com.zatiki.memocards.domain.SyncSettings
 import com.zatiki.memocards.domain.ThemeName
@@ -23,6 +25,8 @@ import com.zatiki.memocards.domain.UiSettings
 import org.json.JSONObject
 
 class MemoRepository(private val dao: MemoDao) {
+
+    private val fsrs = FsrsScheduler()
 
     private fun estudiaApi(settings: SyncSettings): EstudiaApi? {
         if (settings.baseUrl.isBlank() || settings.apiKey.isBlank()) return null
@@ -84,14 +88,27 @@ class MemoRepository(private val dao: MemoDao) {
         id = id,
         noteId = noteId,
         due = due,
-        interval = interval,
-        easeFactor = easeFactor,
+        stability = stability,
+        difficulty = difficulty,
+        intervalDays = intervalDays,
+        phase = FsrsPhase.from(phase),
+        lastReviewAt = lastReviewAt,
         repetitions = repetitions,
         lapses = lapses,
         queue = CardQueue.from(queue),
         remoteCardId = remoteCardId,
         createdAt = createdAt,
         updatedAt = updatedAt,
+    )
+
+    private fun Card.toFsrsState() = FsrsCardState(
+        stability = stability,
+        difficulty = difficulty,
+        intervalDays = intervalDays,
+        phase = phase,
+        lastReviewAt = lastReviewAt,
+        repetitions = repetitions,
+        lapses = lapses,
     )
 
     suspend fun listDecks(): List<Deck> = dao.listDecks().map { it.toDomain() }
@@ -160,7 +177,7 @@ class MemoRepository(private val dao: MemoDao) {
 
     suspend fun getDeckStats(deckId: Long): DeckStats {
         val ts = System.currentTimeMillis()
-        val endOfDay = Sm2.startOfDay(ts) + MS_PER_DAY - 1
+        val endOfDay = StudyPeriod.startOfDay(ts) + MS_PER_DAY - 1
         var newCount = 0
         var dueCount = 0
         var total = 0
@@ -177,9 +194,9 @@ class MemoRepository(private val dao: MemoDao) {
     suspend fun getDueCards(deckId: Long, limit: Int = 50, advanceDays: Int = 0): List<CardWithNote> {
         val deck = getDeck(deckId)
         val ts = System.currentTimeMillis()
-        val endOfDay = Sm2.startOfDay(ts) + MS_PER_DAY - 1 + advanceDays * MS_PER_DAY
+        val endOfDay = StudyPeriod.startOfDay(ts) + MS_PER_DAY - 1 + advanceDays * MS_PER_DAY
         val studyEnd = if (deck?.studyDays != null && deck.studyStartAt != null) {
-            Sm2.studyEndDate(deck.studyStartAt, deck.studyDays)
+            StudyPeriod.studyEndDate(deck.studyStartAt, deck.studyDays)
         } else null
         val inWindow = if (studyEnd != null && ts <= studyEnd) 1 else 0
         val minRep = deck?.minRepetitions ?: 1
@@ -189,8 +206,11 @@ class MemoRepository(private val dao: MemoDao) {
                     id = row.cardId,
                     noteId = row.noteId,
                     due = row.due,
-                    interval = row.interval,
-                    easeFactor = row.easeFactor,
+                    stability = row.stability,
+                    difficulty = row.difficulty,
+                    intervalDays = row.intervalDays,
+                    phase = FsrsPhase.from(row.phase),
+                    lastReviewAt = row.lastReviewAt,
                     repetitions = row.repetitions,
                     lapses = row.lapses,
                     queue = CardQueue.from(row.queue),
@@ -212,28 +232,28 @@ class MemoRepository(private val dao: MemoDao) {
         cardId: Long,
         rating: ReviewRating,
         elapsedMs: Long = 0L,
-        scheduler: SchedulerAlgorithm = SchedulerAlgorithm.SM2,
     ): Card? {
         val entity = dao.getCard(cardId) ?: return null
         val card = entity.toDomain()
         val note = dao.getNote(card.noteId)
         val deck = note?.let { dao.getDeck(it.deckId)?.toDomain() }
-        val result = when (scheduler) {
-            SchedulerAlgorithm.FSRS -> Fsrs.scheduleReview(card, rating)
-            SchedulerAlgorithm.SM2 -> Sm2.scheduleReview(card, rating)
-        }
+        val result = fsrs.review(card.toFsrsState(), FsrsRating.from(rating))
         val cappedDue = if (deck != null) {
-            Sm2.capDueToStudyPeriod(result.due, deck.studyStartAt, deck.studyDays)
+            StudyPeriod.capDueToStudyPeriod(result.due, deck.studyStartAt, deck.studyDays)
         } else result.due
+        val queue = CardQueue.fromPhase(result.phase)
         val ts = System.currentTimeMillis()
         dao.updateCard(
             entity.copy(
                 due = cappedDue,
-                interval = result.interval,
-                easeFactor = result.easeFactor,
+                stability = result.stability,
+                difficulty = result.difficulty,
+                intervalDays = result.intervalDays,
+                phase = result.phase.value,
+                lastReviewAt = result.lastReviewAt,
                 repetitions = result.repetitions,
                 lapses = result.lapses,
-                queue = result.queue.value,
+                queue = queue.value,
                 updatedAt = ts,
             ),
         )
@@ -241,8 +261,8 @@ class MemoRepository(private val dao: MemoDao) {
             ReviewLogEntity(
                 cardId = cardId,
                 rating = rating,
-                intervalBefore = card.interval,
-                intervalAfter = result.interval,
+                intervalBefore = card.intervalDays.toDouble(),
+                intervalAfter = result.intervalDays.toDouble(),
                 reviewedAt = ts,
             ),
         )
@@ -251,11 +271,14 @@ class MemoRepository(private val dao: MemoDao) {
         }
         return card.copy(
             due = cappedDue,
-            interval = result.interval,
-            easeFactor = result.easeFactor,
+            stability = result.stability,
+            difficulty = result.difficulty,
+            intervalDays = result.intervalDays,
+            phase = result.phase,
+            lastReviewAt = result.lastReviewAt,
             repetitions = result.repetitions,
             lapses = result.lapses,
-            queue = result.queue,
+            queue = queue,
             updatedAt = ts,
         )
     }
@@ -290,13 +313,11 @@ class MemoRepository(private val dao: MemoDao) {
         val font = map["ui.fontScale"]?.toFloatOrNull()?.coerceIn(0.9f, 1.4f) ?: 1f
         val ratingLayout = RatingLayout.from(map["ui.ratingLayout"])
         val arcLabelMode = ArcLabelMode.from(map["ui.arcLabelMode"])
-        val scheduler = SchedulerAlgorithm.from(map["ui.scheduler"])
         return UiSettings(
             theme = theme,
             fontScale = font,
             ratingLayout = ratingLayout,
             arcLabelMode = arcLabelMode,
-            scheduler = scheduler,
         )
     }
 
@@ -305,7 +326,6 @@ class MemoRepository(private val dao: MemoDao) {
         dao.upsertSetting(AppSettingEntity("ui.fontScale", next.fontScale.toString()))
         dao.upsertSetting(AppSettingEntity("ui.ratingLayout", next.ratingLayout.value))
         dao.upsertSetting(AppSettingEntity("ui.arcLabelMode", next.arcLabelMode.value))
-        dao.upsertSetting(AppSettingEntity("ui.scheduler", next.scheduler.value))
         return next
     }
 
