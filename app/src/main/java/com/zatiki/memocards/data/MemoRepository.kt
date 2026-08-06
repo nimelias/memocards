@@ -101,15 +101,25 @@ class MemoRepository(private val dao: MemoDao) {
         updatedAt = updatedAt,
     )
 
-    private fun Card.toFsrsState() = FsrsCardState(
-        stability = stability,
-        difficulty = difficulty,
-        intervalDays = intervalDays,
-        phase = phase,
-        lastReviewAt = lastReviewAt,
-        repetitions = repetitions,
-        lapses = lapses,
-    )
+    private fun Card.toFsrsState(): FsrsCardState {
+        val resolvedPhase = when (phase) {
+            FsrsPhase.Added -> when (queue) {
+                CardQueue.REVIEW -> FsrsPhase.Review
+                CardQueue.LEARNING -> FsrsPhase.ReLearning
+                else -> FsrsPhase.Added
+            }
+            else -> phase
+        }
+        return FsrsCardState(
+            stability = stability,
+            difficulty = difficulty,
+            intervalDays = intervalDays,
+            phase = resolvedPhase,
+            lastReviewAt = lastReviewAt,
+            repetitions = repetitions,
+            lapses = lapses,
+        )
+    }
 
     suspend fun listDecks(): List<Deck> = dao.listDecks().map { it.toDomain() }
 

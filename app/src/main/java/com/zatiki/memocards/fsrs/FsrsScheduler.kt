@@ -6,6 +6,7 @@ import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
+import kotlin.math.round
 import kotlin.math.roundToInt
 import kotlin.random.Random
 
@@ -25,17 +26,18 @@ class FsrsScheduler(
         rating: FsrsRating,
         nowMillis: Long = System.currentTimeMillis(),
     ): FsrsReviewResult {
-        val preview = preview(card, nowMillis).first { it.rating == rating }
-        val newPhase = nextPhase(card.phase, rating, preview.intervalDays)
+        val safeCard = card.normalized()
+        val preview = preview(safeCard, nowMillis).first { it.rating == rating }
+        val newPhase = nextPhase(safeCard.phase, rating, preview.intervalDays)
         val due = computeDue(nowMillis, preview.intervalDays, preview.durationMillis)
-        val lapses = card.lapses + if (card.phase == FsrsPhase.Review && rating == FsrsRating.Again) 1 else 0
+        val lapses = safeCard.lapses + if (safeCard.phase == FsrsPhase.Review && rating == FsrsRating.Again) 1 else 0
         return FsrsReviewResult(
-            stability = preview.stability,
-            difficulty = preview.difficulty,
+            stability = preview.stability.coerceFinite(MIN_STABILITY),
+            difficulty = preview.difficulty.coerceFinite(DEFAULT_DIFFICULTY).coerceIn(MIN_DIFFICULTY, MAX_DIFFICULTY),
             intervalDays = preview.intervalDays,
             due = due,
             phase = newPhase,
-            repetitions = card.repetitions + 1,
+            repetitions = safeCard.repetitions + 1,
             lapses = lapses,
             lastReviewAt = nowMillis,
         )
@@ -134,35 +136,37 @@ class FsrsScheduler(
             }
 
             FsrsPhase.Review -> {
+                val stability = card.stability.coerceAtLeast(MIN_STABILITY)
+                val difficulty = card.difficulty.coerceIn(MIN_DIFFICULTY, MAX_DIFFICULTY)
                 val elapsedDays = elapsedDaysSince(card.lastReviewAt, nowMillis)
-                val retrievability = forgettingCurve(elapsedDays, card.stability)
+                val retrievability = forgettingCurve(elapsedDays, stability)
                 val stateAgain = InitState(
-                    difficulty = nextDifficulty(card.difficulty, FsrsRating.Again),
-                    stability = nextForgetStability(card.difficulty, card.stability, retrievability),
+                    difficulty = nextDifficulty(difficulty, FsrsRating.Again),
+                    stability = nextForgetStability(difficulty, stability, retrievability),
                 )
                 val stateHard = InitState(
-                    difficulty = nextDifficulty(card.difficulty, FsrsRating.Hard),
+                    difficulty = nextDifficulty(difficulty, FsrsRating.Hard),
                     stability = nextRecallStability(
-                        card.difficulty,
-                        card.stability,
+                        difficulty,
+                        stability,
                         retrievability,
                         FsrsRating.Hard,
                     ),
                 )
                 val stateGood = InitState(
-                    difficulty = nextDifficulty(card.difficulty, FsrsRating.Good),
+                    difficulty = nextDifficulty(difficulty, FsrsRating.Good),
                     stability = nextRecallStability(
-                        card.difficulty,
-                        card.stability,
+                        difficulty,
+                        stability,
                         retrievability,
                         FsrsRating.Good,
                     ),
                 )
                 val stateEasy = InitState(
-                    difficulty = nextDifficulty(card.difficulty, FsrsRating.Easy),
+                    difficulty = nextDifficulty(difficulty, FsrsRating.Easy),
                     stability = nextRecallStability(
-                        card.difficulty,
-                        card.stability,
+                        difficulty,
+                        stability,
                         retrievability,
                         FsrsRating.Easy,
                     ),
@@ -204,7 +208,7 @@ class FsrsScheduler(
     }
 
     private fun relearningStates(card: FsrsCardState): List<InitState> {
-        if (card.difficulty == 0.0) {
+        if (card.difficulty <= 0.0 || card.stability <= 0.0) {
             return FsrsRating.entries.map { initState(it) }
         }
         val lastD = card.difficulty
@@ -307,11 +311,12 @@ class FsrsScheduler(
     }
 
     private fun nextShortTermStability(currentS: Double, rating: FsrsRating): Double {
-        var sinc = exp(params[17] * (rating.value - 3 + params[18])) * currentS.pow(-params[19])
+        val safeS = currentS.coerceAtLeast(MIN_STABILITY)
+        var sinc = exp(params[17] * (rating.value - 3 + params[18])) * safeS.pow(-params[19])
         if (rating.value >= 3) {
             sinc = max(sinc, 1.0)
         }
-        return abs(currentS * sinc).round2()
+        return abs(safeS * sinc).coerceFinite(MIN_STABILITY)
     }
 
     private fun nextForgetStability(
@@ -344,12 +349,33 @@ class FsrsScheduler(
         return (s * (1 + factorTerm)).round2()
     }
 
-    private fun Double.round2(): Double = "%.2f".format(this).toDouble()
+    private fun Double.round2(): Double = round(this * 100.0) / 100.0
+
+    private fun Double.coerceFinite(fallback: Double): Double =
+        if (isNaN() || isInfinite()) fallback else this
+
+    private fun FsrsCardState.normalized(): FsrsCardState {
+        return when (phase) {
+            FsrsPhase.Added -> this
+            FsrsPhase.ReLearning, FsrsPhase.Review -> copy(
+                stability = stability.coerceAtLeast(MIN_STABILITY),
+                difficulty = if (difficulty <= 0.0) {
+                    DEFAULT_DIFFICULTY
+                } else {
+                    difficulty.coerceIn(MIN_DIFFICULTY, MAX_DIFFICULTY)
+                },
+            )
+        }
+    }
 
     companion object {
         private const val DAY_MILLIS = 24 * 60 * 60 * 1000L
         private const val DEFAULT_RETENTION = 0.9
         private const val cardFallbackDays = 0.0
+        private const val MIN_STABILITY = 0.1
+        private const val MIN_DIFFICULTY = 1.0
+        private const val MAX_DIFFICULTY = 10.0
+        private const val DEFAULT_DIFFICULTY = 5.0
 
         val DEFAULT_PARAMS: DoubleArray = doubleArrayOf(
             0.212, 1.2931, 2.3065, 8.2956, 6.4133, 0.8334, 3.0194, 0.001, 1.8722, 0.1666,

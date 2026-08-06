@@ -148,7 +148,11 @@ fun ReviewScreen(
             index += 1
         }
         scope.launch {
-            repo.reviewCard(cardId, rating, elapsedMs)
+            try {
+                repo.reviewCard(cardId, rating, elapsedMs)
+            } catch (_: Exception) {
+                // Evita cierre silencioso si falla el guardado del repaso.
+            }
         }
     }
 
