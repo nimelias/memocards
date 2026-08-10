@@ -82,6 +82,12 @@ fun NoteEditorScreen(
             label = { Text("Reverso") },
             minLines = 3,
         )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Cloze: usa [...] en el frente y la respuesta en el reverso, o {{c1::texto}}.",
+            color = palette.muted,
+            fontSize = scaledSp(12f),
+        )
         Spacer(Modifier.height(20.dp))
         Button(
             enabled = !saving && (front.isNotBlank() || back.isNotBlank()),

@@ -88,14 +88,36 @@ class EstudiaApi(
             title to cards.filter { it.front.isNotBlank() }
         }
 
-    suspend fun postReview(remoteCardId: Long, rating: String, elapsedMs: Long) =
-        withContext(Dispatchers.IO) {
-            val payload = JSONObject()
-                .put("rating", rating)
-                .put("elapsedMs", elapsedMs)
-                .toString()
-            postJson("/api/cards/$remoteCardId/review", payload)
+    /**
+     * Envía feedback de repaso. Si [fsrs] está presente, estudIA persiste ese estado
+     * en lugar de recalcular intervalos localmente.
+     */
+    suspend fun postReview(
+        remoteCardId: Long,
+        rating: String,
+        elapsedMs: Long,
+        fsrs: CardFsrsSnapshot? = null,
+    ) = withContext(Dispatchers.IO) {
+        val payload = JSONObject()
+            .put("rating", rating)
+            .put("elapsedMs", elapsedMs)
+        if (fsrs != null) {
+            payload
+                .put("stability", fsrs.stability)
+                .put("difficulty", fsrs.difficulty)
+                .put("intervalDays", fsrs.intervalDays)
+                .put("phase", fsrs.phase)
+                .put("due", fsrs.due)
+                .put("repetitions", fsrs.repetitions)
+                .put("lapses", fsrs.lapses)
+            if (fsrs.lastReviewAt != null) {
+                payload.put("lastReviewAt", fsrs.lastReviewAt)
+            } else {
+                payload.put("lastReviewAt", JSONObject.NULL)
+            }
         }
+        postJson("/api/cards/$remoteCardId/review", payload.toString())
+    }
 
     private fun getJson(path: String): JSONObject {
         val request = Request.Builder()

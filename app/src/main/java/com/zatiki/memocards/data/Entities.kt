@@ -94,6 +94,7 @@ data class ReviewLogEntity(
     val rating: Int,
     @ColumnInfo(name = "interval_before") val intervalBefore: Double,
     @ColumnInfo(name = "interval_after") val intervalAfter: Double,
+    @ColumnInfo(name = "elapsed_ms") val elapsedMs: Long = 0L,
     @ColumnInfo(name = "reviewed_at") val reviewedAt: Long,
 )
 
@@ -103,7 +104,27 @@ data class PendingReviewEntity(
     @ColumnInfo(name = "remote_card_id") val remoteCardId: Long,
     val rating: String,
     @ColumnInfo(name = "elapsed_ms") val elapsedMs: Long,
+    val due: Long,
+    val stability: Double,
+    val difficulty: Double,
+    @ColumnInfo(name = "interval_days") val intervalDays: Int,
+    val phase: Int,
+    @ColumnInfo(name = "last_review_at") val lastReviewAt: Long? = null,
+    val repetitions: Int,
+    val lapses: Int,
     @ColumnInfo(name = "created_at") val createdAt: Long,
+)
+
+/** Estado FSRS a enviar a estudIA tras calificar una carta. */
+data class CardFsrsSnapshot(
+    val due: Long,
+    val stability: Double,
+    val difficulty: Double,
+    val intervalDays: Int,
+    val phase: Int,
+    val lastReviewAt: Long?,
+    val repetitions: Int,
+    val lapses: Int,
 )
 
 @Entity(tableName = "app_settings")
@@ -137,6 +158,28 @@ data class QueueDueCount(
     val queue: String,
     val due: Long,
     val count: Int,
+)
+
+data class DeckCardCount(
+    val deckId: Long,
+    val count: Int,
+)
+
+data class QueueCount(
+    val queue: String,
+    val count: Int,
+)
+
+data class ReviewStamp(
+    @ColumnInfo(name = "reviewed_at") val reviewedAt: Long,
+    @ColumnInfo(name = "elapsed_ms") val elapsedMs: Long,
+)
+
+data class NoteSearchRow(
+    val id: Long,
+    @ColumnInfo(name = "deck_id") val deckId: Long,
+    @ColumnInfo(name = "deck_name") val deckName: String,
+    @ColumnInfo(name = "fields_json") val fieldsJson: String,
 )
 
 @Dao
@@ -220,6 +263,67 @@ interface MemoDao {
 
     @Query(
         """
+        SELECT c.queue AS queue, c.due AS due, COUNT(*) AS count
+        FROM cards c
+        GROUP BY c.queue, c.due
+        """,
+    )
+    suspend fun allQueueDueCounts(): List<QueueDueCount>
+
+    @Query(
+        """
+        SELECT COUNT(*) FROM review_log
+        WHERE reviewed_at >= :dayStart AND reviewed_at <= :dayEnd
+        """,
+    )
+    suspend fun countReviewsBetween(dayStart: Long, dayEnd: Long): Int
+
+    @Query(
+        """
+        SELECT n.deck_id AS deckId, COUNT(c.id) AS count
+        FROM cards c
+        JOIN notes n ON n.id = c.note_id
+        GROUP BY n.deck_id
+        """,
+    )
+    suspend fun cardCountsByDeck(): List<DeckCardCount>
+
+    @Query("SELECT queue, COUNT(*) AS count FROM cards GROUP BY queue")
+    suspend fun queueCounts(): List<QueueCount>
+
+    @Query(
+        """
+        SELECT reviewed_at, elapsed_ms FROM review_log
+        WHERE reviewed_at >= :since
+        ORDER BY reviewed_at ASC
+        """,
+    )
+    suspend fun listReviewsSince(since: Long): List<ReviewStamp>
+
+    @Query(
+        """
+        SELECT * FROM decks
+        WHERE name LIKE '%' || :query || '%'
+        ORDER BY name COLLATE NOCASE
+        LIMIT :limit
+        """,
+    )
+    suspend fun searchDecks(query: String, limit: Int = 30): List<DeckEntity>
+
+    @Query(
+        """
+        SELECT n.id, n.deck_id, d.name AS deck_name, n.fields_json
+        FROM notes n
+        JOIN decks d ON d.id = n.deck_id
+        WHERE n.fields_json LIKE '%' || :query || '%'
+        ORDER BY n.updated_at DESC
+        LIMIT :limit
+        """,
+    )
+    suspend fun searchNotes(query: String, limit: Int = 40): List<NoteSearchRow>
+
+    @Query(
+        """
         SELECT c.id, c.note_id, c.due, c.stability, c.difficulty, c.interval_days, c.phase,
                c.last_review_at, c.repetitions, c.lapses, c.queue,
                c.created_at, c.updated_at,
@@ -277,7 +381,7 @@ interface MemoDao {
         PendingReviewEntity::class,
         AppSettingEntity::class,
     ],
-    version = 3,
+    version = 5,
     exportSchema = false,
 )
 abstract class MemoDatabase : RoomDatabase() {

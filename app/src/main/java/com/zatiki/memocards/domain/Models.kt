@@ -78,6 +78,51 @@ data class DeckStats(
     val total: Int,
 )
 
+/** Contadores por cola en un mazo (para buckets del detalle). */
+data class DeckBucketStats(
+    val total: Int,
+    val newCount: Int,
+    val learningCount: Int,
+    val reviewDueCount: Int,
+) {
+    val leftToStudy: Int get() = newCount + learningCount + reviewDueCount
+
+    fun percentOf(count: Int): Int =
+        if (total <= 0) 0 else ((count * 100f) / total).toInt().coerceIn(0, 100)
+}
+
+/** Agregados del home (local, día actual). */
+data class HomeStats(
+    val cardsDone: Int,
+    val leftToAnswer: Int,
+)
+
+data class DeckSummary(
+    val deck: Deck,
+    val cardCount: Int,
+)
+
+data class DayActivity(
+    val dayStart: Long,
+    val reviewCount: Int,
+)
+
+data class ActivityStats(
+    val cardsStudiedToday: Int,
+    val elapsedMsToday: Long,
+    val newCount: Int,
+    val learningCount: Int,
+    val reviewCount: Int,
+    val heatmap: List<DayActivity>,
+)
+
+data class NoteSearchHit(
+    val noteId: Long,
+    val deckId: Long,
+    val deckName: String,
+    val frontPreview: String,
+)
+
 data class DeckSettings(
     val studyDays: Int?,
     val minRepetitions: Int,

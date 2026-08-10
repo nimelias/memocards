@@ -6,7 +6,13 @@ import com.zatiki.memocards.domain.CardQueue
 import com.zatiki.memocards.domain.CardWithNote
 import com.zatiki.memocards.domain.Deck
 import com.zatiki.memocards.domain.DeckSettings
+import com.zatiki.memocards.domain.ActivityStats
+import com.zatiki.memocards.domain.DayActivity
+import com.zatiki.memocards.domain.DeckBucketStats
 import com.zatiki.memocards.domain.DeckStats
+import com.zatiki.memocards.domain.DeckSummary
+import com.zatiki.memocards.domain.HomeStats
+import com.zatiki.memocards.domain.NoteSearchHit
 import com.zatiki.memocards.domain.Note
 import com.zatiki.memocards.domain.NoteFields
 import com.zatiki.memocards.domain.EstudiaDeckSummary
@@ -201,7 +207,123 @@ class MemoRepository(private val dao: MemoDao) {
         return DeckStats(newCount, dueCount, total)
     }
 
-    suspend fun getDueCards(deckId: Long, limit: Int = 50, advanceDays: Int = 0): List<CardWithNote> {
+    suspend fun getDeckBucketStats(deckId: Long): DeckBucketStats {
+        val ts = System.currentTimeMillis()
+        val endOfDay = StudyPeriod.startOfDay(ts) + MS_PER_DAY - 1
+        var total = 0
+        var newCount = 0
+        var learningCount = 0
+        var reviewDueCount = 0
+        for (row in dao.deckQueueDueCounts(deckId)) {
+            total += row.count
+            when (row.queue) {
+                "new" -> newCount += row.count
+                "learning" -> if (row.due <= endOfDay) learningCount += row.count
+                "review" -> if (row.due <= endOfDay) reviewDueCount += row.count
+            }
+        }
+        return DeckBucketStats(
+            total = total,
+            newCount = newCount,
+            learningCount = learningCount,
+            reviewDueCount = reviewDueCount,
+        )
+    }
+
+    /** Stats del home: reseñas de hoy + cartas pendientes (new + due). */
+    suspend fun getHomeStats(): HomeStats {
+        val ts = System.currentTimeMillis()
+        val dayStart = StudyPeriod.startOfDay(ts)
+        val endOfDay = dayStart + MS_PER_DAY - 1
+        val cardsDone = dao.countReviewsBetween(dayStart, endOfDay)
+        var left = 0
+        for (row in dao.allQueueDueCounts()) {
+            when {
+                row.queue == "new" -> left += row.count
+                row.due <= endOfDay -> left += row.count
+            }
+        }
+        return HomeStats(cardsDone = cardsDone, leftToAnswer = left)
+    }
+
+    suspend fun listDeckSummaries(): List<DeckSummary> {
+        val counts = dao.cardCountsByDeck().associate { it.deckId to it.count }
+        return listDecks().map { deck ->
+            DeckSummary(deck = deck, cardCount = counts[deck.id] ?: 0)
+        }
+    }
+
+    suspend fun getActivityStats(heatmapDays: Int = 35): ActivityStats {
+        val ts = System.currentTimeMillis()
+        val dayStart = StudyPeriod.startOfDay(ts)
+        val endOfDay = dayStart + MS_PER_DAY - 1
+        val since = dayStart - (heatmapDays - 1L) * MS_PER_DAY
+        val stamps = dao.listReviewsSince(since)
+
+        var cardsToday = 0
+        var elapsedToday = 0L
+        val byDay = mutableMapOf<Long, Int>()
+        for (stamp in stamps) {
+            val bucket = StudyPeriod.startOfDay(stamp.reviewedAt)
+            byDay[bucket] = (byDay[bucket] ?: 0) + 1
+            if (stamp.reviewedAt in dayStart..endOfDay) {
+                cardsToday += 1
+                elapsedToday += stamp.elapsedMs.coerceAtLeast(0L)
+            }
+        }
+
+        val heatmap = (0 until heatmapDays).map { offset ->
+            val d = dayStart - (heatmapDays - 1L - offset) * MS_PER_DAY
+            DayActivity(dayStart = d, reviewCount = byDay[d] ?: 0)
+        }
+
+        var newCount = 0
+        var learningCount = 0
+        var reviewCount = 0
+        for (row in dao.queueCounts()) {
+            when (row.queue) {
+                "new" -> newCount = row.count
+                "learning" -> learningCount = row.count
+                "review" -> reviewCount = row.count
+            }
+        }
+
+        return ActivityStats(
+            cardsStudiedToday = cardsToday,
+            elapsedMsToday = elapsedToday,
+            newCount = newCount,
+            learningCount = learningCount,
+            reviewCount = reviewCount,
+            heatmap = heatmap,
+        )
+    }
+
+    suspend fun searchDecks(query: String): List<Deck> {
+        val q = query.trim()
+        if (q.isEmpty()) return emptyList()
+        return dao.searchDecks(q).map { it.toDomain() }
+    }
+
+    suspend fun searchNotes(query: String): List<NoteSearchHit> {
+        val q = query.trim()
+        if (q.isEmpty()) return emptyList()
+        return dao.searchNotes(q).map { row ->
+            val fields = parseFields(row.fieldsJson)
+            NoteSearchHit(
+                noteId = row.id,
+                deckId = row.deckId,
+                deckName = row.deckName,
+                frontPreview = fields.front.ifBlank { fields.back }.take(80),
+            )
+        }
+    }
+
+    suspend fun getDueCards(
+        deckId: Long,
+        limit: Int = 50,
+        advanceDays: Int = 0,
+        queueFilter: String? = null,
+    ): List<CardWithNote> {
         val deck = getDeck(deckId)
         val ts = System.currentTimeMillis()
         val endOfDay = StudyPeriod.startOfDay(ts) + MS_PER_DAY - 1 + advanceDays * MS_PER_DAY
@@ -210,7 +332,7 @@ class MemoRepository(private val dao: MemoDao) {
         } else null
         val inWindow = if (studyEnd != null && ts <= studyEnd) 1 else 0
         val minRep = deck?.minRepetitions ?: 1
-        return dao.getDueCards(deckId, endOfDay, inWindow, minRep, limit).map { row ->
+        val rows = dao.getDueCards(deckId, endOfDay, inWindow, minRep, limit).map { row ->
             CardWithNote(
                 card = Card(
                     id = row.cardId,
@@ -236,6 +358,8 @@ class MemoRepository(private val dao: MemoDao) {
                 ),
             )
         }
+        val filter = queueFilter?.takeIf { it.isNotBlank() && it != "all" } ?: return rows
+        return rows.filter { it.card.queue.value == filter }
     }
 
     suspend fun reviewCard(
@@ -273,11 +397,22 @@ class MemoRepository(private val dao: MemoDao) {
                 rating = rating,
                 intervalBefore = card.intervalDays.toDouble(),
                 intervalAfter = result.intervalDays.toDouble(),
+                elapsedMs = elapsedMs,
                 reviewedAt = ts,
             ),
         )
+        val fsrsSnapshot = CardFsrsSnapshot(
+            due = cappedDue,
+            stability = result.stability,
+            difficulty = result.difficulty,
+            intervalDays = result.intervalDays,
+            phase = result.phase.value,
+            lastReviewAt = result.lastReviewAt,
+            repetitions = result.repetitions,
+            lapses = result.lapses,
+        )
         entity.remoteCardId?.let { remoteId ->
-            pushReview(remoteId, rating, elapsedMs)
+            pushReview(remoteId, rating, elapsedMs, fsrsSnapshot)
         }
         return card.copy(
             due = cappedDue,
@@ -293,25 +428,43 @@ class MemoRepository(private val dao: MemoDao) {
         )
     }
 
-    private suspend fun pushReview(remoteCardId: Long, rating: ReviewRating, elapsedMs: Long) {
+    private suspend fun pushReview(
+        remoteCardId: Long,
+        rating: ReviewRating,
+        elapsedMs: Long,
+        fsrs: CardFsrsSnapshot,
+    ) {
         val settings = getSyncSettings()
         val api = estudiaApi(settings) ?: run {
-            queuePendingReview(remoteCardId, rating, elapsedMs)
+            queuePendingReview(remoteCardId, rating, elapsedMs, fsrs)
             return
         }
         try {
-            api.postReview(remoteCardId, ratingToRemote(rating), elapsedMs)
+            api.postReview(remoteCardId, ratingToRemote(rating), elapsedMs, fsrs)
         } catch (_: Exception) {
-            queuePendingReview(remoteCardId, rating, elapsedMs)
+            queuePendingReview(remoteCardId, rating, elapsedMs, fsrs)
         }
     }
 
-    private suspend fun queuePendingReview(remoteCardId: Long, rating: ReviewRating, elapsedMs: Long) {
+    private suspend fun queuePendingReview(
+        remoteCardId: Long,
+        rating: ReviewRating,
+        elapsedMs: Long,
+        fsrs: CardFsrsSnapshot,
+    ) {
         dao.insertPendingReview(
             PendingReviewEntity(
                 remoteCardId = remoteCardId,
                 rating = ratingToRemote(rating),
                 elapsedMs = elapsedMs,
+                due = fsrs.due,
+                stability = fsrs.stability,
+                difficulty = fsrs.difficulty,
+                intervalDays = fsrs.intervalDays,
+                phase = fsrs.phase,
+                lastReviewAt = fsrs.lastReviewAt,
+                repetitions = fsrs.repetitions,
+                lapses = fsrs.lapses,
                 createdAt = System.currentTimeMillis(),
             ),
         )
@@ -481,7 +634,17 @@ class MemoRepository(private val dao: MemoDao) {
         var pushed = 0
         for (pending in dao.listPendingReviews()) {
             try {
-                api.postReview(pending.remoteCardId, pending.rating, pending.elapsedMs)
+                val fsrs = CardFsrsSnapshot(
+                    due = pending.due,
+                    stability = pending.stability,
+                    difficulty = pending.difficulty,
+                    intervalDays = pending.intervalDays,
+                    phase = pending.phase,
+                    lastReviewAt = pending.lastReviewAt,
+                    repetitions = pending.repetitions,
+                    lapses = pending.lapses,
+                )
+                api.postReview(pending.remoteCardId, pending.rating, pending.elapsedMs, fsrs)
                 dao.deletePendingReview(pending.id)
                 pushed += 1
             } catch (_: Exception) {
@@ -491,35 +654,52 @@ class MemoRepository(private val dao: MemoDao) {
         return pushed
     }
 
-    /** Primera instalación vacía: mazo «Trivial» con preguntas tipo trivial. */
+    /** Demostración local: Trivial + mazos de ejemplo (cloze, Q&A largo). */
     suspend fun ensureDemoDeckIfNeeded() {
         val settings = dao.getUiSettingsRows()
         val legacySeeded = settings.any { it.key == DEMO_SEEDED_KEY }
         val version = settings.find { it.key == DEMO_TRIVIAL_VERSION_KEY }?.value?.toIntOrNull()
             ?: if (legacySeeded) 1 else 0
-        if (version >= DEMO_TRIVIAL_VERSION) return
+        if (version >= DEMO_CONTENT_VERSION) return
 
         val decks = listDecks()
-        if (decks.isEmpty()) {
-            seedTrivialCards(createDeck("Trivial").id)
+        if (decks.isEmpty() || version < 2) {
+            // Primera instalación o upgrade temprano: asegurar Trivial completo.
+            ensureNamedDeckCards("Trivial", TRIVIAL_CARDS)
         } else {
-            decks.find { it.name == "Trivial" }?.let { topUpTrivialCards(it.id) }
+            decks.find { it.name == "Trivial" }?.let { topUpDeckCards(it.id, TRIVIAL_CARDS) }
+                ?: ensureNamedDeckCards("Trivial", TRIVIAL_CARDS)
         }
+
+        if (version < 3) {
+            ensureNamedDeckCards("Cloze — Biología", CLOZE_BIO_CARDS)
+            ensureNamedDeckCards("Q&A — Historia", HISTORY_QA_CARDS)
+        }
+
         dao.upsertSetting(AppSettingEntity(DEMO_SEEDED_KEY, "1"))
         dao.upsertSetting(
-            AppSettingEntity(DEMO_TRIVIAL_VERSION_KEY, DEMO_TRIVIAL_VERSION.toString()),
+            AppSettingEntity(DEMO_TRIVIAL_VERSION_KEY, DEMO_CONTENT_VERSION.toString()),
         )
     }
 
-    private suspend fun seedTrivialCards(deckId: Long) {
-        for ((front, back) in TRIVIAL_CARDS) {
+    private suspend fun ensureNamedDeckCards(name: String, cards: List<Pair<String, String>>) {
+        val existing = listDecks().find { it.name == name }
+        if (existing == null) {
+            seedDeckCards(createDeck(name).id, cards)
+        } else {
+            topUpDeckCards(existing.id, cards)
+        }
+    }
+
+    private suspend fun seedDeckCards(deckId: Long, cards: List<Pair<String, String>>) {
+        for ((front, back) in cards) {
             createNote(deckId, NoteFields(front = front, back = back))
         }
     }
 
-    private suspend fun topUpTrivialCards(deckId: Long) {
+    private suspend fun topUpDeckCards(deckId: Long, cards: List<Pair<String, String>>) {
         val existing = listNotes(deckId).map { it.fields.front }.toSet()
-        for ((front, back) in TRIVIAL_CARDS) {
+        for ((front, back) in cards) {
             if (front !in existing) {
                 createNote(deckId, NoteFields(front = front, back = back))
             }
@@ -536,8 +716,9 @@ class MemoRepository(private val dao: MemoDao) {
         private const val SYNC_INTERVAL_KEY = "sync.intervalMin"
         private const val SYNC_LAST_AT_KEY = "sync.lastAt"
         private const val DEMO_SEEDED_KEY = "demo.seeded"
+        /** Clave histórica; el valor es la versión de contenido demo. */
         private const val DEMO_TRIVIAL_VERSION_KEY = "demo.trivial.version"
-        private const val DEMO_TRIVIAL_VERSION = 2
+        private const val DEMO_CONTENT_VERSION = 3
 
         private val TRIVIAL_CARDS = listOf(
             "¿Cuál es la capital de Francia?" to "París",
@@ -575,6 +756,41 @@ class MemoRepository(private val dao: MemoDao) {
             "¿Qué vitamina produce el sol en la piel?" to "Vitamina D",
             "¿Cuántos lados tiene un triángulo?" to "Tres",
             "¿En qué deporte se usa un birdie?" to "Bádminton",
+        )
+
+        private val CLOZE_BIO_CARDS = listOf(
+            "[...], is considered as the power house of the cell?" to "The Mitochondria",
+            "What is the net energy of the Krebs cycle? [...]" to
+                "The net gain is 3 NADH, 1 FADH2 and 1 GTP (≈ ATP) per acetyl-CoA.",
+            "La fotosíntesis ocurre principalmente en los [...] de las plantas." to "cloroplastos",
+            "El ADN está formado por [...] nitrogenadas, azúcar y fosfato." to "bases",
+            "{{c1::La mitocondria}} es el orgánulo encargado de la respiración celular." to "",
+            "La unidad básica de la vida es la {{c1::célula}}." to "",
+            "[...] transporta oxígeno en la sangre humana." to "La hemoglobina",
+            "Los [...] son los vasos que llevan sangre desde el corazón a los tejidos." to "arterias",
+            "El proceso de división celular que produce gametos es la {{c1::meiosis}}." to "",
+            "La membrana plasmática es {{c1::semipermeable}}." to "",
+            "En humanos, el intercambio de gases ocurre en los [...] pulmonares." to "alvéolos",
+            "[...] es el azúcar simple más usado como combustible celular." to "La glucosa",
+        )
+
+        private val HISTORY_QA_CARDS = listOf(
+            "¿Qué fue la Revolución Francesa?" to
+                "Un proceso político y social (1789–1799) que acabó con la monarquía absoluta en Francia y difundió ideas de ciudadanía, derechos y soberanía popular.",
+            "¿Quién fue Cleopatra VII?" to
+                "Última reina activa del Egipto ptolemaico; aliada de Julio César y Marco Antonio; su reinado terminó con la conquista romana (30 a. C.).",
+            "¿Qué fue la Ruta de la Seda?" to
+                "Red de rutas comerciales que conectaba Asia, Oriente Medio y Europa, intercambiando seda, especias, tecnologías e ideas.",
+            "¿Qué provocó la Primera Guerra Mundial?" to
+                "Un complejo de alianzas, militarismo e imperialismo; el detonante inmediato fue el asesinato del archiduque Francisco Fernando en Sarajevo (1914).",
+            "¿Quién fue Simón Bolívar?" to
+                "Líder independentista sudamericano; impulsó la liberación de varios territorios del dominio español a inicios del s. XIX.",
+            "¿Qué fue el Renacimiento?" to
+                "Movimiento cultural europeo (s. XIV–XVI) que recuperó ideales clásicos, impulsó el humanismo y renovó arte, ciencia y pensamiento.",
+            "¿Cuándo se firmó la Declaración de Independencia de EE. UU.?" to
+                "El 4 de julio de 1776, en el Congreso Continental de Filadelfia.",
+            "¿Qué fue la Guerra Fría?" to
+                "Confrontación ideológica y geopolítica (aprox. 1947–1991) entre el bloque liderado por EE. UU. y el liderado por la URSS, sin guerra directa total entre ambos.",
         )
     }
 }

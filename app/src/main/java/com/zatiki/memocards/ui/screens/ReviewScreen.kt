@@ -64,6 +64,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
@@ -76,6 +77,7 @@ import com.zatiki.memocards.domain.CardWithNote
 import com.zatiki.memocards.domain.RatingLayout
 import com.zatiki.memocards.domain.ReviewRating
 import com.zatiki.memocards.domain.UiSettings
+import com.zatiki.memocards.ui.ClozeFormat
 import com.zatiki.memocards.ui.theme.LocalMemoPalette
 import com.zatiki.memocards.ui.theme.scaledSp
 import kotlin.math.PI
@@ -108,6 +110,7 @@ fun ReviewScreen(
     deckName: String,
     settings: UiSettings,
     advanceDays: Int = 0,
+    queueFilter: String = "all",
     onDone: () -> Unit,
 ) {
     val palette = LocalMemoPalette.current
@@ -119,14 +122,20 @@ fun ReviewScreen(
     var loading by remember { mutableStateOf(true) }
     var finished by remember { mutableStateOf(false) }
     var revealedAt by remember { mutableStateOf(0L) }
+    var sessionKey by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(deckId, advanceDays) {
+    suspend fun loadQueue() {
         loading = true
-        queue = repo.getDueCards(deckId, 50, advanceDays)
+        queue = repo.getDueCards(deckId, 50, advanceDays, queueFilter)
         index = 0
         revealed = false
+        revealedAt = 0L
         finished = queue.isEmpty()
         loading = false
+    }
+
+    LaunchedEffect(deckId, advanceDays, queueFilter, sessionKey) {
+        loadQueue()
     }
 
     val current = queue.getOrNull(index)
@@ -176,14 +185,35 @@ fun ReviewScreen(
                         verticalArrangement = Arrangement.Center,
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        Text("Sesión completada", fontSize = scaledSp(24f), fontWeight = FontWeight.Bold, color = palette.text)
+                        Text(
+                            "Great Job! ✨",
+                            fontSize = scaledSp(28f),
+                            fontWeight = FontWeight.Bold,
+                            color = palette.text,
+                        )
                         Spacer(Modifier.height(8.dp))
-                        Text(deckName, color = palette.muted)
-                        Spacer(Modifier.height(20.dp))
-                        Button(onClick = onDone) { Text("Volver al mazo") }
+                        Text(deckName, color = palette.muted, fontSize = scaledSp(15f))
+                        Spacer(Modifier.height(24.dp))
+                        Button(
+                            onClick = { sessionKey += 1 },
+                            colors = ButtonDefaults.buttonColors(containerColor = palette.primary),
+                            modifier = Modifier.fillMaxWidth(0.7f),
+                        ) {
+                            Text("RESTART", fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        Button(
+                            onClick = onDone,
+                            colors = ButtonDefaults.buttonColors(containerColor = palette.surface),
+                        ) {
+                            Text("Volver al mazo", color = palette.text)
+                        }
                     }
                 }
                 else -> {
+                    val front = current.note.fields.front
+                    val back = current.note.fields.back
+                    val cloze = ClozeFormat.isCloze(front)
                     key(current.card.id) {
                         Row(
                             Modifier.fillMaxWidth(),
@@ -210,21 +240,43 @@ fun ReviewScreen(
                                 .fillMaxWidth(),
                             verticalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
-                            CardFacePanel(
-                                text = current.note.fields.front.ifBlank { "—" },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .weight(1f),
-                            )
-                            if (revealed) {
-                                CardFacePanel(
-                                    text = current.note.fields.back.ifBlank { "—" },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .weight(1f),
-                                )
-                            } else {
-                                Box(Modifier.weight(1f).fillMaxWidth())
+                            when {
+                                cloze && revealed -> {
+                                    CardFacePanel(
+                                        text = ClozeFormat.revealed(front, back, palette.primary),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .weight(1f),
+                                    )
+                                    Box(Modifier.weight(1f).fillMaxWidth())
+                                }
+                                cloze -> {
+                                    CardFacePanel(
+                                        text = AnnotatedString(ClozeFormat.prompt(front).ifBlank { "—" }),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .weight(1f),
+                                    )
+                                    Box(Modifier.weight(1f).fillMaxWidth())
+                                }
+                                else -> {
+                                    CardFacePanel(
+                                        text = AnnotatedString(front.ifBlank { "—" }),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .weight(1f),
+                                    )
+                                    if (revealed) {
+                                        CardFacePanel(
+                                            text = AnnotatedString(back.ifBlank { "—" }),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .weight(1f),
+                                        )
+                                    } else {
+                                        Box(Modifier.weight(1f).fillMaxWidth())
+                                    }
+                                }
                             }
                         }
                         Spacer(Modifier.height(16.dp))
@@ -608,7 +660,7 @@ private fun RatingArcMenu(
 
 @Composable
 private fun CardFacePanel(
-    text: String,
+    text: AnnotatedString,
     modifier: Modifier = Modifier,
 ) {
     val palette = LocalMemoPalette.current
