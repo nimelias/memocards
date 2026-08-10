@@ -45,11 +45,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zatiki.memocards.data.MemoRepository
+import com.zatiki.memocards.domain.Book
 import com.zatiki.memocards.domain.Deck
 import com.zatiki.memocards.domain.DeckSummary
+import com.zatiki.memocards.domain.EstudiaBookSummary
 import com.zatiki.memocards.domain.EstudiaDeckSummary
 import com.zatiki.memocards.domain.HomeStats
-import com.zatiki.memocards.domain.ThemeName
 import com.zatiki.memocards.domain.UiSettings
 import com.zatiki.memocards.ui.theme.LocalMemoPalette
 import com.zatiki.memocards.ui.theme.scaledSp
@@ -61,18 +62,22 @@ fun DeckListScreen(
     settings: UiSettings,
     onToggleTheme: () -> Unit,
     onOpenDeck: (Deck) -> Unit,
+    onOpenBook: (Long) -> Unit,
 ) {
     val palette = LocalMemoPalette.current
     val scope = rememberCoroutineScope()
     var decks by remember { mutableStateOf<List<DeckSummary>>(emptyList()) }
+    var books by remember { mutableStateOf<List<Book>>(emptyList()) }
     var homeStats by remember { mutableStateOf(HomeStats(0, 0)) }
     var showImport by remember { mutableStateOf(false) }
     var remoteDecks by remember { mutableStateOf<List<EstudiaDeckSummary>>(emptyList()) }
+    var remoteBooks by remember { mutableStateOf<List<EstudiaBookSummary>>(emptyList()) }
     var importLoading by remember { mutableStateOf(false) }
     var importMessage by remember { mutableStateOf<String?>(null) }
 
     suspend fun reload() {
         decks = repo.listDeckSummaries()
+        books = repo.listBooks()
         homeStats = repo.getHomeStats()
     }
 
@@ -125,7 +130,7 @@ fun DeckListScreen(
                 Spacer(Modifier.weight(1f))
                 IconButton(onClick = onToggleTheme) {
                     Icon(
-                        if (settings.theme == ThemeName.DARK) Icons.Outlined.LightMode else Icons.Outlined.DarkMode,
+                        if (settings.theme.isDark) Icons.Outlined.LightMode else Icons.Outlined.DarkMode,
                         contentDescription = "Tema",
                         tint = palette.primary,
                     )
@@ -163,21 +168,6 @@ fun DeckListScreen(
 
             Spacer(Modifier.height(18.dp))
 
-            Box(
-                Modifier
-                    .background(palette.surface, RoundedCornerShape(50))
-                    .padding(horizontal = 14.dp, vertical = 6.dp),
-            ) {
-                Text(
-                    "DECKS",
-                    color = palette.primary,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = scaledSp(12f),
-                )
-            }
-
-            Spacer(Modifier.height(8.dp))
-
             TextButton(
                 onClick = {
                     scope.launch {
@@ -185,9 +175,10 @@ fun DeckListScreen(
                         importMessage = null
                         val sync = repo.getSyncSettings()
                         remoteDecks = repo.listEstudiaDecks(sync)
+                        remoteBooks = repo.listEstudiaBooks(sync)
                         importLoading = false
-                        if (remoteDecks.isEmpty()) {
-                            importMessage = "Configura estudIA en Ajustes o no hay barajas"
+                        if (remoteDecks.isEmpty() && remoteBooks.isEmpty()) {
+                            importMessage = "Configura estudIA en Ajustes o no hay barajas/libros"
                         } else {
                             showImport = true
                         }
@@ -212,17 +203,84 @@ fun DeckListScreen(
 
             Spacer(Modifier.height(8.dp))
 
-            if (decks.isEmpty()) {
-                Text(
-                    "Sin mazos todavía. Usa + para crear el primero.",
-                    color = palette.muted,
-                    fontSize = scaledSp(15f),
-                )
-            } else {
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = PaddingValues(bottom = 24.dp),
-                ) {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(bottom = 24.dp),
+                modifier = Modifier.weight(1f),
+            ) {
+                if (books.isNotEmpty()) {
+                    item {
+                        Column {
+                            Box(
+                                Modifier
+                                    .background(palette.surface, RoundedCornerShape(50))
+                                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                            ) {
+                                Text(
+                                    "LIBROS",
+                                    color = palette.primary,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = scaledSp(12f),
+                                )
+                            }
+                            Spacer(Modifier.height(8.dp))
+                        }
+                    }
+                    items(books, key = { "book-${it.id}" }) { book ->
+                        val shape = RoundedCornerShape(14.dp)
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .background(palette.surface, shape)
+                                .clickable { onOpenBook(book.id) }
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                book.title,
+                                color = palette.text,
+                                fontSize = scaledSp(16f),
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                "Leer",
+                                color = palette.primary,
+                                fontSize = scaledSp(14f),
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                    item { Spacer(Modifier.height(12.dp)) }
+                }
+
+                item {
+                    Column {
+                        Box(
+                            Modifier
+                                .background(palette.surface, RoundedCornerShape(50))
+                                .padding(horizontal = 14.dp, vertical = 6.dp),
+                        ) {
+                            Text(
+                                "DECKS",
+                                color = palette.primary,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = scaledSp(12f),
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
+                }
+
+                if (decks.isEmpty()) {
+                    item {
+                        Text(
+                            "Sin mazos todavía. Usa + para crear el primero.",
+                            color = palette.muted,
+                            fontSize = scaledSp(15f),
+                        )
+                    }
+                } else {
                     items(decks, key = { it.deck.id }) { summary ->
                         val shape = RoundedCornerShape(14.dp)
                         Row(
@@ -256,24 +314,48 @@ fun DeckListScreen(
     if (showImport) {
         AlertDialog(
             onDismissRequest = { showImport = false },
-            title = { Text("Barajas en estudIA") },
+            title = { Text("Importar desde estudIA") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    remoteDecks.forEach { remote ->
-                        Button(
-                            onClick = {
-                                scope.launch {
-                                    importLoading = true
-                                    val deckId = repo.importEstudiaDeck(remote.id)
-                                    importLoading = false
-                                    showImport = false
-                                    reload()
-                                    decks.find { it.deck.id == deckId }?.let { onOpenDeck(it.deck) }
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text("${remote.title} (${remote.cardCount} cartas)")
+                    if (remoteBooks.isNotEmpty()) {
+                        Text("Libros", fontWeight = FontWeight.SemiBold)
+                        remoteBooks.forEach { remote ->
+                            Button(
+                                onClick = {
+                                    scope.launch {
+                                        importLoading = true
+                                        val bookId = repo.importEstudiaBook(remote.id)
+                                        importLoading = false
+                                        showImport = false
+                                        reload()
+                                        onOpenBook(bookId)
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(remote.title)
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
+                    if (remoteDecks.isNotEmpty()) {
+                        Text("Barajas", fontWeight = FontWeight.SemiBold)
+                        remoteDecks.forEach { remote ->
+                            Button(
+                                onClick = {
+                                    scope.launch {
+                                        importLoading = true
+                                        val deckId = repo.importEstudiaDeck(remote.id)
+                                        importLoading = false
+                                        showImport = false
+                                        reload()
+                                        decks.find { it.deck.id == deckId }?.let { onOpenDeck(it.deck) }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text("${remote.title} (${remote.cardCount} cartas)")
+                            }
                         }
                     }
                 }

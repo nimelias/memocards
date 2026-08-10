@@ -89,6 +89,39 @@ class EstudiaApi(
         }
 
     /**
+     * Lista libros del proyecto. Si el bridge aún no expone el endpoint, devuelve vacío.
+     */
+    suspend fun listBooks(projectId: Long): List<Pair<Long, String>> = withContext(Dispatchers.IO) {
+        try {
+            val body = getJson("/api/projects/$projectId/books")
+            val arr = body.optJSONArray("books") ?: JSONArray()
+            buildList {
+                for (i in 0 until arr.length()) {
+                    val o = arr.getJSONObject(i)
+                    val id = o.optLong("id", -1L)
+                    val title = o.optString("title", "").ifBlank { "Libro $id" }
+                    if (id > 0) add(id to title)
+                }
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    suspend fun fetchBook(remoteBookId: Long): Pair<String, String>? = withContext(Dispatchers.IO) {
+        try {
+            val body = getJson("/api/books/$remoteBookId")
+            val title = body.optString("title", "Libro estudIA")
+            val markdown = body.optString("markdown")
+                .ifBlank { body.optString("content") }
+                .ifBlank { body.optString("body") }
+            if (markdown.isBlank()) null else title to markdown
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
      * Envía feedback de repaso. Si [fsrs] está presente, estudIA persiste ese estado
      * en lugar de recalcular intervalos localmente.
      */

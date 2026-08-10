@@ -133,6 +133,17 @@ data class AppSettingEntity(
     val value: String,
 )
 
+@Entity(tableName = "books")
+data class BookEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val title: String,
+    val markdown: String,
+    @ColumnInfo(name = "remote_book_id") val remoteBookId: Long? = null,
+    val source: String? = null,
+    @ColumnInfo(name = "created_at") val createdAt: Long,
+    @ColumnInfo(name = "updated_at") val updatedAt: Long,
+)
+
 data class CardNoteRow(
     @ColumnInfo(name = "id") val cardId: Long,
     @ColumnInfo(name = "note_id") val noteId: Long,
@@ -370,6 +381,21 @@ interface MemoDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertSetting(setting: AppSettingEntity)
+
+    @Query("SELECT * FROM books ORDER BY title COLLATE NOCASE")
+    suspend fun listBooks(): List<BookEntity>
+
+    @Query("SELECT * FROM books WHERE id = :id")
+    suspend fun getBook(id: Long): BookEntity?
+
+    @Query("SELECT * FROM books WHERE remote_book_id = :remoteId LIMIT 1")
+    suspend fun getBookByRemoteId(remoteId: Long): BookEntity?
+
+    @Insert
+    suspend fun insertBook(book: BookEntity): Long
+
+    @Update
+    suspend fun updateBook(book: BookEntity)
 }
 
 @Database(
@@ -380,8 +406,9 @@ interface MemoDao {
         ReviewLogEntity::class,
         PendingReviewEntity::class,
         AppSettingEntity::class,
+        BookEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 abstract class MemoDatabase : RoomDatabase() {

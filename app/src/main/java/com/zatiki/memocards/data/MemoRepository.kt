@@ -16,7 +16,9 @@ import com.zatiki.memocards.domain.NoteSearchHit
 import com.zatiki.memocards.domain.Note
 import com.zatiki.memocards.domain.NoteFields
 import com.zatiki.memocards.domain.EstudiaDeckSummary
+import com.zatiki.memocards.domain.EstudiaBookSummary
 import com.zatiki.memocards.domain.EstudiaProject
+import com.zatiki.memocards.domain.Book
 import com.zatiki.memocards.domain.RatingLayout
 import com.zatiki.memocards.domain.ReviewRating
 import com.zatiki.memocards.fsrs.FsrsCardState
@@ -474,11 +476,13 @@ class MemoRepository(private val dao: MemoDao) {
         val map = dao.getUiSettingsRows().associate { it.key to it.value }
         val theme = ThemeName.from(map["ui.theme"])
         val font = map["ui.fontScale"]?.toFloatOrNull()?.coerceIn(0.9f, 1.4f) ?: 1f
+        val lineHeight = map["ui.lineHeight"]?.toFloatOrNull()?.coerceIn(1.15f, 2.0f) ?: 1.45f
         val ratingLayout = RatingLayout.from(map["ui.ratingLayout"])
         val arcLabelMode = ArcLabelMode.from(map["ui.arcLabelMode"])
         return UiSettings(
             theme = theme,
             fontScale = font,
+            lineHeight = lineHeight,
             ratingLayout = ratingLayout,
             arcLabelMode = arcLabelMode,
         )
@@ -487,6 +491,7 @@ class MemoRepository(private val dao: MemoDao) {
     suspend fun saveUiSettings(next: UiSettings): UiSettings {
         dao.upsertSetting(AppSettingEntity("ui.theme", next.theme.value))
         dao.upsertSetting(AppSettingEntity("ui.fontScale", next.fontScale.toString()))
+        dao.upsertSetting(AppSettingEntity("ui.lineHeight", next.lineHeight.toString()))
         dao.upsertSetting(AppSettingEntity("ui.ratingLayout", next.ratingLayout.value))
         dao.upsertSetting(AppSettingEntity("ui.arcLabelMode", next.arcLabelMode.value))
         return next
@@ -533,6 +538,58 @@ class MemoRepository(private val dao: MemoDao) {
         val projectId = settings.projectId ?: return emptyList()
         val api = estudiaApi(settings) ?: return emptyList()
         return api.listDecks(projectId)
+    }
+
+    suspend fun listEstudiaBooks(settings: SyncSettings): List<EstudiaBookSummary> {
+        val projectId = settings.projectId ?: return emptyList()
+        val api = estudiaApi(settings) ?: return emptyList()
+        return api.listBooks(projectId).map { (id, title) -> EstudiaBookSummary(id, title) }
+    }
+
+    private fun BookEntity.toDomain() = Book(
+        id = id,
+        title = title,
+        markdown = markdown,
+        remoteBookId = remoteBookId,
+        source = source,
+        createdAt = createdAt,
+        updatedAt = updatedAt,
+    )
+
+    suspend fun listBooks(): List<Book> = dao.listBooks().map { it.toDomain() }
+
+    suspend fun getBook(id: Long): Book? = dao.getBook(id)?.toDomain()
+
+    suspend fun upsertLocalBook(title: String, markdown: String, remoteBookId: Long? = null, source: String? = null): Long {
+        val ts = System.currentTimeMillis()
+        if (remoteBookId != null) {
+            val existing = dao.getBookByRemoteId(remoteBookId)
+            if (existing != null) {
+                dao.updateBook(
+                    existing.copy(title = title, markdown = markdown, updatedAt = ts, source = source ?: existing.source),
+                )
+                return existing.id
+            }
+        }
+        return dao.insertBook(
+            BookEntity(
+                title = title,
+                markdown = markdown,
+                remoteBookId = remoteBookId,
+                source = source,
+                createdAt = ts,
+                updatedAt = ts,
+            ),
+        )
+    }
+
+    suspend fun importEstudiaBook(remoteBookId: Long): Long {
+        val settings = getSyncSettings()
+        val api = estudiaApi(settings) ?: throw EstudiaApiException("Configura la conexión con estudIA")
+        val fetched = api.fetchBook(remoteBookId)
+            ?: throw EstudiaApiException("Libro no disponible en estudIA")
+        val (title, markdown) = fetched
+        return upsertLocalBook(title, markdown, remoteBookId = remoteBookId, source = SOURCE_ESTUDIA)
     }
 
     suspend fun importEstudiaDeck(remoteDeckId: Long): Long {
@@ -676,10 +733,20 @@ class MemoRepository(private val dao: MemoDao) {
             ensureNamedDeckCards("Q&A — Historia", HISTORY_QA_CARDS)
         }
 
+        if (version < 4) {
+            ensureDemoBookIfNeeded()
+        }
+
         dao.upsertSetting(AppSettingEntity(DEMO_SEEDED_KEY, "1"))
         dao.upsertSetting(
             AppSettingEntity(DEMO_TRIVIAL_VERSION_KEY, DEMO_CONTENT_VERSION.toString()),
         )
+    }
+
+    private suspend fun ensureDemoBookIfNeeded() {
+        val title = "MemoCards — Guía de lectura"
+        if (dao.listBooks().any { it.title == title }) return
+        upsertLocalBook(title, DEMO_BOOK_MARKDOWN, source = "demo")
     }
 
     private suspend fun ensureNamedDeckCards(name: String, cards: List<Pair<String, String>>) {
@@ -718,7 +785,35 @@ class MemoRepository(private val dao: MemoDao) {
         private const val DEMO_SEEDED_KEY = "demo.seeded"
         /** Clave histórica; el valor es la versión de contenido demo. */
         private const val DEMO_TRIVIAL_VERSION_KEY = "demo.trivial.version"
-        private const val DEMO_CONTENT_VERSION = 3
+        private const val DEMO_CONTENT_VERSION = 4
+
+        private val DEMO_BOOK_MARKDOWN = """
+            # Memoria y repetición espaciada
+
+            Esta guía acompaña MemoCards. El modo lectura muestra el título activo arriba mientras haces scroll.
+
+            ## Por qué funciona
+
+            El olvido no es fallo: es selección. Repasar justo cuando la huella se debilita consolida el recuerdo sin saturar.
+
+            ### SM-2 y FSRS
+
+            MemoCards usa FSRS-6 en el dispositivo. Las calificaciones (otra vez / difícil / bien / fácil) alimentan el intervalo siguiente.
+
+            ## Cómo estudiar
+
+            1. Elige un mazo y pulsa estudiar.
+            2. Lee el anverso; revela cuando estés listo.
+            3. Califica con honestidad — el algoritmo necesita señal real.
+
+            ## Cloze
+
+            Usa `[...]` en el frente y la respuesta en el reverso, o `{{c1::texto}}` embebido.
+
+            ## Libros desde estudIA
+
+            Cuando el bridge exponga libros, se importarán junto a las barajas. El markdown llega limpio: títulos, párrafos y listas.
+        """.trimIndent()
 
         private val TRIVIAL_CARDS = listOf(
             "¿Cuál es la capital de Francia?" to "París",

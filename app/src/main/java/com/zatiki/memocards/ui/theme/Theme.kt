@@ -75,6 +75,16 @@ fun paletteFor(theme: ThemeName): MemoPalette = when (theme) {
         primary = Color(0xFFB7791F),
         onPrimary = Color.White,
     )
+    ThemeName.EMICH -> MemoPalette(
+        background = Color(0xFF0B0E2A),
+        card = Color(0xFF151B3D),
+        surface = Color(0xFF121633),
+        text = Color(0xFFF5F7FF),
+        muted = Color(0xFF9BA3C7),
+        border = Color(0xFF4A7AFF),
+        primary = Color(0xFF9B8CFF),
+        onPrimary = Color.White,
+    )
 }
 
 @Composable
@@ -83,7 +93,7 @@ fun MemoCardsTheme(
     content: @Composable () -> Unit,
 ) {
     val palette = paletteFor(settings.theme)
-    val darkTheme = settings.theme == ThemeName.DARK
+    val darkTheme = settings.theme.isDark
     val view = LocalView.current
     SideEffect {
         val window = (view.context as? Activity)?.window ?: return@SideEffect

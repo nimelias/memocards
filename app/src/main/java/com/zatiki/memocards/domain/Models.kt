@@ -131,8 +131,25 @@ data class DeckSettings(
 data class UiSettings(
     val theme: ThemeName = ThemeName.LIGHT,
     val fontScale: Float = 1f,
+    /** Interlineado relativo para modo lectura libro. */
+    val lineHeight: Float = 1.45f,
     val ratingLayout: RatingLayout = RatingLayout.ARC_RIGHT,
     val arcLabelMode: ArcLabelMode = ArcLabelMode.ICONS,
+)
+
+data class Book(
+    val id: Long = 0,
+    val title: String,
+    val markdown: String,
+    val remoteBookId: Long? = null,
+    val source: String? = null,
+    val createdAt: Long,
+    val updatedAt: Long,
+)
+
+data class EstudiaBookSummary(
+    val id: Long,
+    val title: String,
 )
 
 /** Conexión con el bridge estudIA (puerto 30004). */
@@ -174,7 +191,12 @@ data class SyncResult(
 enum class ThemeName(val value: String) {
     LIGHT("light"),
     DARK("dark"),
-    SAND("sand");
+    SAND("sand"),
+    /** Oscuro navy/púrpura inspirado en Emich; cartas de estudio integradas. */
+    EMICH("emich");
+
+    val isDark: Boolean
+        get() = this == DARK || this == EMICH
 
     companion object {
         fun from(value: String?): ThemeName =

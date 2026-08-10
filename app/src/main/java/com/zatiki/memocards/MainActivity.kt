@@ -33,6 +33,7 @@ import com.zatiki.memocards.domain.UiSettings
 import com.zatiki.memocards.navigation.Routes
 import com.zatiki.memocards.ui.components.MainTab
 import com.zatiki.memocards.ui.components.MemoBottomBar
+import com.zatiki.memocards.ui.screens.BookReaderScreen
 import com.zatiki.memocards.ui.screens.DeckDetailScreen
 import com.zatiki.memocards.ui.screens.DeckListScreen
 import com.zatiki.memocards.ui.screens.NoteEditorScreen
@@ -110,13 +111,16 @@ class MainActivity : ComponentActivity() {
                                 onToggleTheme = {
                                     scope.launch {
                                         val next =
-                                            if (settings.theme == ThemeName.DARK) ThemeName.LIGHT
-                                            else ThemeName.DARK
+                                            if (settings.theme.isDark) ThemeName.LIGHT
+                                            else ThemeName.EMICH
                                         settings = repo.saveUiSettings(settings.copy(theme = next))
                                     }
                                 },
                                 onOpenDeck = { deck ->
                                     nav.navigate(Routes.DeckDetail.create(deck.id))
+                                },
+                                onOpenBook = { bookId ->
+                                    nav.navigate(Routes.BookReader.create(bookId))
                                 },
                             )
                         }
@@ -206,6 +210,19 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
+                        composable(
+                            route = Routes.BookReader.route,
+                            arguments = listOf(navArgument("bookId") { type = NavType.LongType }),
+                        ) { entry ->
+                            val bookId = entry.arguments?.getLong("bookId") ?: return@composable
+                            BookReaderScreen(
+                                repo = repo,
+                                bookId = bookId,
+                                settings = settings,
+                                onBack = { nav.popBackStack() },
+                            )
+                        }
+
                         composable(Routes.Settings.route) {
                             SettingsScreen(
                                 repo = repo,
@@ -223,6 +240,14 @@ class MainActivity : ComponentActivity() {
                                             ((scale * 100).toInt() / 100f).coerceIn(0.9f, 1.4f)
                                         settings =
                                             repo.saveUiSettings(settings.copy(fontScale = clamped))
+                                    }
+                                },
+                                onLineHeightChange = { height ->
+                                    scope.launch {
+                                        val clamped =
+                                            ((height * 100).toInt() / 100f).coerceIn(1.15f, 2.0f)
+                                        settings =
+                                            repo.saveUiSettings(settings.copy(lineHeight = clamped))
                                     }
                                 },
                                 onRatingLayoutChange = { layout ->

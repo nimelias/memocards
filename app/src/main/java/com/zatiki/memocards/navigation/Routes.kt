@@ -18,6 +18,9 @@ sealed class Routes(val route: String) {
         ) = "review/$deckId/$advanceDays/$queueFilter"
     }
     data object Settings : Routes("settings")
+    data object BookReader : Routes("book/{bookId}") {
+        fun create(bookId: Long) = "book/$bookId"
+    }
 
     companion object {
         val tabRoutes = setOf(

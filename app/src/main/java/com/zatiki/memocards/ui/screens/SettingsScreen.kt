@@ -51,6 +51,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onThemeChange: (ThemeName) -> Unit,
     onFontScaleChange: (Float) -> Unit,
+    onLineHeightChange: (Float) -> Unit,
     onRatingLayoutChange: (RatingLayout) -> Unit,
     onArcLabelModeChange: (ArcLabelMode) -> Unit,
     showBack: Boolean = true,
@@ -101,8 +102,9 @@ fun SettingsScreen(
         Spacer(Modifier.height(8.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            ThemeName.entries.forEach { theme ->
+            listOf(ThemeName.LIGHT, ThemeName.DARK).forEach { theme ->
                 FilterChip(
                     selected = settings.theme == theme,
                     onClick = { onThemeChange(theme) },
@@ -111,13 +113,33 @@ fun SettingsScreen(
                             when (theme) {
                                 ThemeName.LIGHT -> "Claro"
                                 ThemeName.DARK -> "Oscuro"
-                                ThemeName.SAND -> "Arena"
+                                else -> theme.value
                             },
                         )
                     },
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(end = 8.dp),
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            listOf(ThemeName.SAND, ThemeName.EMICH).forEach { theme ->
+                FilterChip(
+                    selected = settings.theme == theme,
+                    onClick = { onThemeChange(theme) },
+                    label = {
+                        Text(
+                            when (theme) {
+                                ThemeName.SAND -> "Arena"
+                                ThemeName.EMICH -> "Emich"
+                                else -> theme.value
+                            },
+                        )
+                    },
+                    modifier = Modifier.weight(1f),
                 )
             }
         }
@@ -133,6 +155,25 @@ fun SettingsScreen(
             value = settings.fontScale,
             onValueChange = onFontScaleChange,
             valueRange = 0.9f..1.4f,
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        Spacer(Modifier.height(24.dp))
+        Text(
+            "Interlineado lectura (${"%.2f".format(settings.lineHeight)})",
+            fontWeight = FontWeight.SemiBold,
+            color = palette.text,
+            fontSize = scaledSp(15f),
+        )
+        Text(
+            "Afecta al modo libro.",
+            color = palette.muted,
+            fontSize = scaledSp(12f),
+        )
+        Slider(
+            value = settings.lineHeight,
+            onValueChange = onLineHeightChange,
+            valueRange = 1.15f..2.0f,
             modifier = Modifier.fillMaxWidth(),
         )
 

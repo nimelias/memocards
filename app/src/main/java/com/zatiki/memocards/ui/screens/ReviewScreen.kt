@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -64,7 +65,6 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
@@ -234,80 +234,23 @@ fun ReviewScreen(
                             )
                         }
                         Spacer(Modifier.height(16.dp))
-                        Column(
-                            Modifier
+                        IntegratedStudyCard(
+                            front = front,
+                            back = back,
+                            cloze = cloze,
+                            revealed = revealed,
+                            onReveal = { revealBack() },
+                            modifier = Modifier
                                 .weight(1f)
                                 .fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(16.dp),
-                        ) {
-                            when {
-                                cloze && revealed -> {
-                                    CardFacePanel(
-                                        text = ClozeFormat.revealed(front, back, palette.primary),
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .weight(1f),
-                                    )
-                                    Box(Modifier.weight(1f).fillMaxWidth())
-                                }
-                                cloze -> {
-                                    CardFacePanel(
-                                        text = AnnotatedString(ClozeFormat.prompt(front).ifBlank { "—" }),
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .weight(1f),
-                                    )
-                                    Box(Modifier.weight(1f).fillMaxWidth())
-                                }
-                                else -> {
-                                    CardFacePanel(
-                                        text = AnnotatedString(front.ifBlank { "—" }),
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .weight(1f),
-                                    )
-                                    if (revealed) {
-                                        CardFacePanel(
-                                            text = AnnotatedString(back.ifBlank { "—" }),
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .weight(1f),
-                                        )
-                                    } else {
-                                        Box(Modifier.weight(1f).fillMaxWidth())
-                                    }
-                                }
-                            }
-                        }
+                        )
                         Spacer(Modifier.height(16.dp))
-                        if (!revealed) {
-                            Surface(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(56.dp)
-                                    .shadow(6.dp, RoundedCornerShape(28.dp)),
-                                shape = RoundedCornerShape(28.dp),
-                                color = palette.card,
-                            ) {
-                                Box(
-                                    Modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Text(
-                                        "Mostrar respuesta",
-                                        fontSize = scaledSp(16f),
-                                        fontWeight = FontWeight.Medium,
-                                        color = palette.text,
-                                    )
-                                }
-                            }
+                        if (revealed && settings.ratingLayout == RatingLayout.BAR) {
+                            RatingBar(
+                                onRate = { rating -> advanceAfterRating(current.card.id, rating) },
+                            )
                         } else {
                             Spacer(Modifier.height(56.dp))
-                            if (settings.ratingLayout == RatingLayout.BAR) {
-                                RatingBar(
-                                    onRate = { rating -> advanceAfterRating(current.card.id, rating) },
-                                )
-                            }
                         }
                     }
                 }
@@ -658,30 +601,109 @@ private fun RatingArcMenu(
     }
 }
 
+/**
+ * Carta Emich: anverso y reverso en un solo contenedor (sin paneles partidos).
+ * Cloze revela in-place; Q&A muestra pregunta arriba y respuesta debajo.
+ */
 @Composable
-private fun CardFacePanel(
-    text: AnnotatedString,
+private fun IntegratedStudyCard(
+    front: String,
+    back: String,
+    cloze: Boolean,
+    revealed: Boolean,
+    onReveal: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val palette = LocalMemoPalette.current
-    val shape = RoundedCornerShape(20.dp)
+    val shape = RoundedCornerShape(24.dp)
 
     Column(
         modifier
-            .shadow(8.dp, shape, clip = false)
+            .shadow(10.dp, shape, clip = false)
+            .border(1.dp, palette.border.copy(alpha = 0.45f), shape)
             .background(palette.card, shape)
-            .padding(horizontal = 24.dp, vertical = 28.dp)
-            .verticalScroll(rememberScrollState()),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+            .padding(horizontal = 22.dp, vertical = 24.dp),
     ) {
-        Text(
-            text,
-            color = palette.text,
-            fontSize = scaledSp(22f),
-            fontWeight = FontWeight.Normal,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth(),
-        )
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            when {
+                cloze && revealed -> {
+                    Text(
+                        ClozeFormat.revealed(front, back, palette.primary),
+                        color = palette.text,
+                        fontSize = scaledSp(22f),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                cloze -> {
+                    Text(
+                        ClozeFormat.prompt(front).ifBlank { "—" },
+                        color = palette.text,
+                        fontSize = scaledSp(22f),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                revealed -> {
+                    Text(
+                        front.ifBlank { "—" },
+                        color = palette.text,
+                        fontSize = scaledSp(22f),
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        back.ifBlank { "—" },
+                        color = palette.muted,
+                        fontSize = scaledSp(18f),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                else -> {
+                    Text(
+                        front.ifBlank { "—" },
+                        color = palette.text,
+                        fontSize = scaledSp(22f),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        }
+
+        if (!revealed) {
+            Spacer(Modifier.height(20.dp))
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onReveal,
+                    ),
+                shape = RoundedCornerShape(28.dp),
+                color = palette.primary.copy(alpha = 0.92f),
+            ) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        "SHOW ANSWER",
+                        fontSize = scaledSp(14f),
+                        fontWeight = FontWeight.Bold,
+                        color = palette.onPrimary,
+                    )
+                }
+            }
+        }
     }
 }
