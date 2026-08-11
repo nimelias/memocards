@@ -184,6 +184,7 @@ data class QueueCount(
 data class ReviewStamp(
     @ColumnInfo(name = "reviewed_at") val reviewedAt: Long,
     @ColumnInfo(name = "elapsed_ms") val elapsedMs: Long,
+    val rating: Int = 0,
 )
 
 data class NoteSearchRow(
@@ -317,12 +318,22 @@ interface MemoDao {
 
     @Query(
         """
-        SELECT reviewed_at, elapsed_ms FROM review_log
+        SELECT reviewed_at, elapsed_ms, rating FROM review_log
         WHERE reviewed_at >= :since
         ORDER BY reviewed_at ASC
         """,
     )
     suspend fun listReviewsSince(since: Long): List<ReviewStamp>
+
+    @Query(
+        """
+        SELECT COUNT(*) FROM review_log r
+        JOIN cards c ON c.id = r.card_id
+        JOIN notes n ON n.id = c.note_id
+        WHERE n.deck_id = :deckId
+        """,
+    )
+    suspend fun countReviewsForDeck(deckId: Long): Int
 
     @Query(
         """

@@ -15,18 +15,21 @@ import com.zatiki.memocards.ui.theme.LocalMemoPalette
 
 /**
  * Brillos degradados tipo Emich: orbes suaves detrás del contenido.
+ * [intensity] 0 = sin glow, 1 = intensidad por defecto del tema.
  */
 @Composable
 fun AmbientGlowBackdrop(
     theme: ThemeName,
+    intensity: Float = 1f,
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val palette = LocalMemoPalette.current
     val strong = theme == ThemeName.EMICH || theme == ThemeName.DARK
-    val a1 = if (strong) 0.38f else 0.10f
-    val a2 = if (strong) 0.28f else 0.07f
-    val a3 = if (strong) 0.24f else 0.05f
+    val factor = intensity.coerceIn(0f, 1.5f)
+    val a1 = (if (strong) 0.38f else 0.10f) * factor
+    val a2 = (if (strong) 0.28f else 0.07f) * factor
+    val a3 = (if (strong) 0.24f else 0.05f) * factor
     val c1 = if (theme == ThemeName.EMICH) Color(0xFF6B5CFF) else palette.primary
     val c2 = if (theme == ThemeName.EMICH) Color(0xFF4A7AFF) else palette.primary
     val c3 = if (theme == ThemeName.EMICH) Color(0xFFB24AFF) else palette.primary
@@ -36,36 +39,38 @@ fun AmbientGlowBackdrop(
             .fillMaxSize()
             .background(palette.background),
     ) {
-        Canvas(Modifier.fillMaxSize()) {
-            val w = size.width
-            val h = size.height
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(c1.copy(alpha = a1), Color.Transparent),
-                    center = Offset(w * 0.88f, h * 0.08f),
+        if (factor > 0.01f) {
+            Canvas(Modifier.fillMaxSize()) {
+                val w = size.width
+                val h = size.height
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(c1.copy(alpha = a1), Color.Transparent),
+                        center = Offset(w * 0.88f, h * 0.08f),
+                        radius = w * 0.55f,
+                    ),
                     radius = w * 0.55f,
-                ),
-                radius = w * 0.55f,
-                center = Offset(w * 0.88f, h * 0.08f),
-            )
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(c2.copy(alpha = a2), Color.Transparent),
-                    center = Offset(w * 0.05f, h * 0.45f),
+                    center = Offset(w * 0.88f, h * 0.08f),
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(c2.copy(alpha = a2), Color.Transparent),
+                        center = Offset(w * 0.05f, h * 0.45f),
+                        radius = w * 0.65f,
+                    ),
                     radius = w * 0.65f,
-                ),
-                radius = w * 0.65f,
-                center = Offset(w * 0.05f, h * 0.45f),
-            )
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(c3.copy(alpha = a3), Color.Transparent),
-                    center = Offset(w * 0.75f, h * 0.92f),
+                    center = Offset(w * 0.05f, h * 0.45f),
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(c3.copy(alpha = a3), Color.Transparent),
+                        center = Offset(w * 0.75f, h * 0.92f),
+                        radius = w * 0.5f,
+                    ),
                     radius = w * 0.5f,
-                ),
-                radius = w * 0.5f,
-                center = Offset(w * 0.75f, h * 0.92f),
-            )
+                    center = Offset(w * 0.75f, h * 0.92f),
+                )
+            }
         }
         content()
     }

@@ -107,12 +107,15 @@ data class DeckSummary(
 data class DayActivity(
     val dayStart: Long,
     val reviewCount: Int,
+    /** Suma de ratings (1–4) para colorear por feedback medio. */
+    val ratingSum: Int = 0,
 )
 
 /** Actividad por hora del día actual (granularidad intradía). */
 data class HourActivity(
     val hour: Int,
     val reviewCount: Int,
+    val ratingSum: Int = 0,
 )
 
 data class ActivityStats(
@@ -144,6 +147,8 @@ data class UiSettings(
     val lineHeight: Float = 1.45f,
     val ratingLayout: RatingLayout = RatingLayout.ARC_RIGHT,
     val arcLabelMode: ArcLabelMode = ArcLabelMode.ICONS,
+    /** Intensidad de los degradados de fondo (0 = apagado, 1 = normal). */
+    val glowIntensity: Float = 1f,
 )
 
 data class Book(
@@ -161,9 +166,9 @@ data class EstudiaBookSummary(
     val title: String,
 )
 
-/** Conexión con el bridge estudIA (puerto 30004). */
+/** Conexión con estudIA (URL pública; auth vía cabecera X-KEY). */
 data class SyncSettings(
-    val baseUrl: String = "http://10.10.10.1:30004",
+    val baseUrl: String = "https://estudia.zatiki.xyz:3005",
     val apiKey: String = "123",
     val projectId: Long? = null,
     val autoSyncEnabled: Boolean = false,

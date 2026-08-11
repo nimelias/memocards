@@ -101,7 +101,7 @@ fun DeckDetailScreen(
     val clozeCount = notes.count { ClozeFormat.isCloze(it.fields.front) }
     val qaCount = notes.size - clozeCount
 
-    AmbientGlowBackdrop(theme = settings.theme) {
+    AmbientGlowBackdrop(theme = settings.theme, intensity = settings.glowIntensity) {
         Column(
             Modifier
                 .fillMaxSize()

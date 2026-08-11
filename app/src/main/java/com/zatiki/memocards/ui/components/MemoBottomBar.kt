@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -42,6 +43,7 @@ fun MemoBottomBar(
     currentRoute: String?,
     onTab: (MainTab) -> Unit,
     onContinueStudy: () -> Unit,
+    showContinueStudy: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val palette = LocalMemoPalette.current
@@ -76,22 +78,26 @@ fun MemoBottomBar(
                 contentDescription = "Estadísticas",
             )
 
-            Box(
-                Modifier
-                    .offset(y = (-10).dp)
-                    .size(54.dp)
-                    .shadow(6.dp, RoundedCornerShape(14.dp))
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(palette.primary)
-                    .clickable(onClick = onContinueStudy),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.Outlined.PlayArrow,
-                    contentDescription = "Continuar estudio",
-                    tint = palette.onPrimary,
-                    modifier = Modifier.size(28.dp),
-                )
+            if (showContinueStudy) {
+                Box(
+                    Modifier
+                        .offset(y = (-10).dp)
+                        .size(54.dp)
+                        .shadow(6.dp, RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(palette.primary)
+                        .clickable(onClick = onContinueStudy),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Outlined.PlayArrow,
+                        contentDescription = "Continuar estudio",
+                        tint = palette.onPrimary,
+                        modifier = Modifier.size(28.dp),
+                    )
+                }
+            } else {
+                Spacer(Modifier.size(54.dp))
             }
 
             TabIcon(

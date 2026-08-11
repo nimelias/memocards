@@ -282,25 +282,38 @@ class MemoRepository(private val dao: MemoDao) {
         var cardsToday = 0
         var elapsedToday = 0L
         val byDay = mutableMapOf<Long, Int>()
+        val ratingByDay = mutableMapOf<Long, Int>()
         val byHour = IntArray(24)
+        val ratingByHour = IntArray(24)
         val cal = Calendar.getInstance()
         for (stamp in stamps) {
             val bucket = StudyPeriod.startOfDay(stamp.reviewedAt)
             byDay[bucket] = (byDay[bucket] ?: 0) + 1
+            ratingByDay[bucket] = (ratingByDay[bucket] ?: 0) + stamp.rating.coerceIn(0, 4)
             if (stamp.reviewedAt in dayStart..endOfDay) {
                 cardsToday += 1
                 elapsedToday += stamp.elapsedMs.coerceAtLeast(0L)
                 cal.timeInMillis = stamp.reviewedAt
-                byHour[cal.get(Calendar.HOUR_OF_DAY)] += 1
+                val hour = cal.get(Calendar.HOUR_OF_DAY)
+                byHour[hour] += 1
+                ratingByHour[hour] += stamp.rating.coerceIn(0, 4)
             }
         }
 
         val heatmap = (0 until heatmapDays).map { offset ->
             val d = dayStart - (heatmapDays - 1L - offset) * MS_PER_DAY
-            DayActivity(dayStart = d, reviewCount = byDay[d] ?: 0)
+            DayActivity(
+                dayStart = d,
+                reviewCount = byDay[d] ?: 0,
+                ratingSum = ratingByDay[d] ?: 0,
+            )
         }
         val hourlyToday = (0 until 24).map { hour ->
-            HourActivity(hour = hour, reviewCount = byHour[hour])
+            HourActivity(
+                hour = hour,
+                reviewCount = byHour[hour],
+                ratingSum = ratingByHour[hour],
+            )
         }
 
         var newCount = 0
@@ -500,6 +513,9 @@ class MemoRepository(private val dao: MemoDao) {
         )
     }
 
+    /** Nº de calificaciones históricas del mazo (para ayudas UX). */
+    suspend fun countDeckReviews(deckId: Long): Int = dao.countReviewsForDeck(deckId)
+
     suspend fun getUiSettings(): UiSettings {
         val map = dao.getUiSettingsRows().associate { it.key to it.value }
         val theme = ThemeName.from(map["ui.theme"])
@@ -507,12 +523,14 @@ class MemoRepository(private val dao: MemoDao) {
         val lineHeight = map["ui.lineHeight"]?.toFloatOrNull()?.coerceIn(1.15f, 2.0f) ?: 1.45f
         val ratingLayout = RatingLayout.from(map["ui.ratingLayout"])
         val arcLabelMode = ArcLabelMode.from(map["ui.arcLabelMode"])
+        val glowIntensity = map["ui.glowIntensity"]?.toFloatOrNull()?.coerceIn(0f, 1.5f) ?: 1f
         return UiSettings(
             theme = theme,
             fontScale = font,
             lineHeight = lineHeight,
             ratingLayout = ratingLayout,
             arcLabelMode = arcLabelMode,
+            glowIntensity = glowIntensity,
         )
     }
 
@@ -522,14 +540,26 @@ class MemoRepository(private val dao: MemoDao) {
         dao.upsertSetting(AppSettingEntity("ui.lineHeight", next.lineHeight.toString()))
         dao.upsertSetting(AppSettingEntity("ui.ratingLayout", next.ratingLayout.value))
         dao.upsertSetting(AppSettingEntity("ui.arcLabelMode", next.arcLabelMode.value))
+        dao.upsertSetting(AppSettingEntity("ui.glowIntensity", next.glowIntensity.toString()))
         return next
     }
 
     suspend fun getSyncSettings(): SyncSettings {
         val map = dao.getSyncSettingsRows().associate { it.key to it.value }
+        val defaults = SyncSettings()
+        val storedUrl = map[SYNC_BASE_URL_KEY]
+        // Migrar instalaciones que aún apuntan al bridge LAN :30004.
+        val baseUrl = when {
+            storedUrl.isNullOrBlank() -> defaults.baseUrl
+            storedUrl.trimEnd('/') == LEGACY_ESTUDIA_BRIDGE_URL -> defaults.baseUrl
+            else -> storedUrl
+        }
+        if (storedUrl != null && storedUrl.trimEnd('/') == LEGACY_ESTUDIA_BRIDGE_URL) {
+            dao.upsertSetting(AppSettingEntity(SYNC_BASE_URL_KEY, defaults.baseUrl))
+        }
         return SyncSettings(
-            baseUrl = map[SYNC_BASE_URL_KEY] ?: SyncSettings().baseUrl,
-            apiKey = map[SYNC_API_KEY_KEY] ?: SyncSettings().apiKey,
+            baseUrl = baseUrl,
+            apiKey = map[SYNC_API_KEY_KEY] ?: defaults.apiKey,
             projectId = map[SYNC_PROJECT_ID_KEY]?.toLongOrNull(),
             autoSyncEnabled = map[SYNC_AUTO_KEY] == "1",
             autoSyncIntervalMinutes = map[SYNC_INTERVAL_KEY]?.toIntOrNull()?.coerceIn(5, 24 * 60) ?: 30,
@@ -809,6 +839,7 @@ class MemoRepository(private val dao: MemoDao) {
             front.contains("[...]") || CLOZE_EMBEDDED.containsMatchIn(front)
 
         private const val SOURCE_ESTUDIA = "estudia"
+        private const val LEGACY_ESTUDIA_BRIDGE_URL = "http://10.10.10.1:30004"
         private const val SYNC_BASE_URL_KEY = "sync.baseUrl"
         private const val SYNC_API_KEY_KEY = "sync.apiKey"
         private const val SYNC_PROJECT_ID_KEY = "sync.projectId"

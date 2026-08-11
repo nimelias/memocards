@@ -1,6 +1,10 @@
 package com.zatiki.memocards.ui.screens
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -55,9 +59,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asAndroidPath
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.draw
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
@@ -129,11 +133,14 @@ fun ReviewScreen(
     var finished by remember { mutableStateOf(false) }
     var revealedAt by remember { mutableStateOf(0L) }
     var sessionKey by remember { mutableIntStateOf(0) }
+    var pendingReviews by remember { mutableIntStateOf(0) }
+    var deckReviewCount by remember { mutableIntStateOf(0) }
     val lifecycleOwner = LocalLifecycleOwner.current
 
     suspend fun loadQueue() {
         loading = true
         queue = repo.getDueCards(deckId, 50, advanceDays, queueFilter)
+        deckReviewCount = repo.countDeckReviews(deckId)
         index = 0
         revealed = false
         revealedAt = 0L
@@ -175,11 +182,16 @@ fun ReviewScreen(
         } else {
             index += 1
         }
+        pendingReviews += 1
         scope.launch {
             try {
                 repo.reviewCard(cardId, rating, elapsedMs)
             } catch (_: Exception) {
                 // Evita cierre silencioso si falla el guardado del repaso.
+            } finally {
+                pendingReviews = (pendingReviews - 1).coerceAtLeast(0)
+                // Refresco incremental tras cada feedback (no solo al salir).
+                onSessionEnd()
             }
         }
     }
@@ -189,13 +201,13 @@ fun ReviewScreen(
             .fillMaxSize()
             .background(palette.background),
     ) {
-        AmbientGlowBackdrop(theme = settings.theme) {
+        AmbientGlowBackdrop(theme = settings.theme, intensity = settings.glowIntensity) {
             Column(
                 Modifier
                     .fillMaxSize()
                     .statusBarsPadding()
                     .navigationBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                    .padding(horizontal = 14.dp, vertical = 2.dp),
             ) {
                 when {
                     loading -> Text("Cargando tarjetas…", color = palette.muted)
@@ -253,7 +265,7 @@ fun ReviewScreen(
                                     fontSize = scaledSp(14f),
                                 )
                             }
-                            Spacer(Modifier.height(8.dp))
+                            Spacer(Modifier.height(4.dp))
                             IntegratedStudyCard(
                                 front = front,
                                 back = back,
@@ -264,13 +276,13 @@ fun ReviewScreen(
                                     .weight(1f)
                                     .fillMaxWidth(),
                             )
-                            Spacer(Modifier.height(6.dp))
+                            Spacer(Modifier.height(2.dp))
                             if (revealed && settings.ratingLayout == RatingLayout.BAR) {
                                 RatingBar(
                                     onRate = { rating -> advanceAfterRating(current.card.id, rating) },
                                 )
                             } else {
-                                Spacer(Modifier.height(48.dp))
+                                Spacer(Modifier.height(36.dp))
                             }
                         }
                     }
@@ -304,6 +316,7 @@ fun ReviewScreen(
                     layout = settings.ratingLayout,
                     labelMode = settings.arcLabelMode,
                     interactive = revealed,
+                    hintDelayMs = if (deckReviewCount < 3) 2_500L else 8_000L,
                     onRate = { rating -> advanceAfterRating(current.card.id, rating) },
                 )
             }
@@ -339,6 +352,7 @@ private fun RatingArcMenu(
     layout: RatingLayout,
     labelMode: ArcLabelMode,
     interactive: Boolean,
+    hintDelayMs: Long = 8_000L,
     onRate: (ReviewRating) -> Unit,
 ) {
     val defaultRight = layout == RatingLayout.ARC_RIGHT
@@ -347,6 +361,7 @@ private fun RatingArcMenu(
     var expanded by remember { mutableStateOf(false) }
     var arcInputEnabled by remember { mutableStateOf(false) }
     var highlightIndex by remember { mutableIntStateOf(-1) }
+    var showSideHint by remember { mutableStateOf(false) }
     val expandProgress by animateFloatAsState(
         targetValue = if (expanded) 1f else 0f,
         animationSpec = if (expanded) {
@@ -420,8 +435,28 @@ private fun RatingArcMenu(
         arcFromRight = fromRight
         arcPivotYFraction = yFraction.coerceIn(0.12f, 0.88f)
         expanded = true
+        showSideHint = false
         highlightIndex = -1
     }
+
+    LaunchedEffect(interactive, hintDelayMs, expanded) {
+        showSideHint = false
+        if (!interactive || expanded) return@LaunchedEffect
+        delay(hintDelayMs)
+        if (interactive && !expanded) showSideHint = true
+    }
+
+    val hintTransition = rememberInfiniteTransition(label = "sideHint")
+    val hintPulseRaw by hintTransition.animateFloat(
+        initialValue = 0.12f,
+        targetValue = 0.42f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(700),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "sideHintAlpha",
+    )
+    val hintPulse = if (showSideHint && interactive && !expanded) hintPulseRaw else 0f
 
     Box(Modifier.fillMaxSize()) {
         Canvas(
@@ -600,6 +635,7 @@ private fun RatingArcMenu(
                     Modifier
                         .fillMaxWidth(0.25f)
                         .fillMaxHeight()
+                        .background(Color(0xFF4A7AFF).copy(alpha = hintPulse))
                         .pointerInput(Unit) {
                             detectTapGestures { offset ->
                                 openArc(false, offset.y / size.height.toFloat())
@@ -611,6 +647,7 @@ private fun RatingArcMenu(
                     Modifier
                         .fillMaxWidth(0.25f)
                         .fillMaxHeight()
+                        .background(Color(0xFF4A7AFF).copy(alpha = hintPulse))
                         .pointerInput(Unit) {
                             detectTapGestures { offset ->
                                 openArc(true, offset.y / size.height.toFloat())
@@ -643,7 +680,7 @@ private fun IntegratedStudyCard(
             .shadow(10.dp, shape, clip = false)
             .border(1.dp, palette.border.copy(alpha = 0.45f), shape)
             .background(palette.card, shape)
-            .padding(horizontal = 18.dp, vertical = 16.dp),
+            .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
         Column(
             Modifier
@@ -675,17 +712,18 @@ private fun IntegratedStudyCard(
                 revealed -> {
                     Text(
                         front.ifBlank { "—" },
-                        color = palette.text,
-                        fontSize = scaledSp(22f),
-                        fontWeight = FontWeight.SemiBold,
+                        color = palette.muted,
+                        fontSize = scaledSp(17f),
+                        fontWeight = FontWeight.Normal,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Spacer(Modifier.height(16.dp))
                     Text(
                         back.ifBlank { "—" },
-                        color = palette.muted,
-                        fontSize = scaledSp(18f),
+                        color = palette.text,
+                        fontSize = scaledSp(22f),
+                        fontWeight = FontWeight.SemiBold,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -702,7 +740,7 @@ private fun IntegratedStudyCard(
             }
         }
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(8.dp))
         if (!revealed) {
             Surface(
                 modifier = Modifier

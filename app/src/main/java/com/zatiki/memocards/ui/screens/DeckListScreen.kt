@@ -65,6 +65,7 @@ import kotlinx.coroutines.launch
 fun DeckListScreen(
     repo: MemoRepository,
     settings: UiSettings,
+    refreshKey: Int = 0,
     onToggleTheme: () -> Unit,
     onOpenDeck: (Deck) -> Unit,
     onOpenBook: (Long) -> Unit,
@@ -93,6 +94,9 @@ fun DeckListScreen(
         repo.syncEstudiaIfDue()
         reload()
     }
+    LaunchedEffect(refreshKey) {
+        if (refreshKey > 0) reload()
+    }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
@@ -108,7 +112,7 @@ fun DeckListScreen(
             .fillMaxSize()
             .background(palette.background),
     ) {
-        AmbientGlowBackdrop(theme = settings.theme) {
+        AmbientGlowBackdrop(theme = settings.theme, intensity = settings.glowIntensity) {
             PerspectiveGrid(
                 color = palette.primary.copy(alpha = 0.22f),
                 modifier = Modifier

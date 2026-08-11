@@ -112,13 +112,69 @@ class EstudiaApi(
         try {
             val body = getJson("/api/books/$remoteBookId")
             val title = body.optString("title", "Libro estudIA")
-            val markdown = body.optString("markdown")
+            var markdown = body.optString("markdown")
                 .ifBlank { body.optString("content") }
                 .ifBlank { body.optString("body") }
+            if (markdown.isBlank()) {
+                // Fallback: export Markdown clásico (texto plano).
+                markdown = getText("/api/books/$remoteBookId/export?format=md")
+            }
+            if (markdown.isBlank()) {
+                // Último recurso: ensamblar desde renderAtoms.
+                markdown = markdownFromAtoms(body)
+            }
+            val highlights = body.optJSONArray("highlights")
+            if (highlights != null && highlights.length() > 0 && !markdown.contains("## Anotaciones")) {
+                markdown = appendHighlightsMarkdown(markdown, highlights)
+            }
             if (markdown.isBlank()) null else title to markdown
         } catch (_: Exception) {
             null
         }
+    }
+
+    private fun markdownFromAtoms(body: JSONObject): String {
+        val title = body.optString("title", "Libro")
+        val atoms = body.optJSONArray("renderAtoms") ?: return ""
+        val lines = mutableListOf("# $title", "")
+        val desc = body.optString("description")
+        if (desc.isNotBlank()) {
+            lines += desc
+            lines += ""
+        }
+        for (i in 0 until atoms.length()) {
+            val atom = atoms.optJSONObject(i) ?: continue
+            val text = atom.optString("body", "").trim()
+            if (text.isBlank()) continue
+            when (atom.optString("compositionType")) {
+                "book_theme" -> {
+                    lines += "## ${text.replace(Regex("^#+\\s*"), "")}"
+                    lines += ""
+                }
+                "book_title" -> {
+                    lines += "### ${text.replace(Regex("^#+\\s*"), "")}"
+                    lines += ""
+                }
+                else -> {
+                    lines += text
+                    lines += ""
+                }
+            }
+        }
+        return lines.joinToString("\n").trim()
+    }
+
+    private fun appendHighlightsMarkdown(markdown: String, highlights: JSONArray): String {
+        val lines = mutableListOf(markdown.trimEnd(), "", "---", "", "## Anotaciones", "")
+        for (i in 0 until highlights.length()) {
+            val h = highlights.optJSONObject(i) ?: continue
+            val text = h.optString("body", "").ifBlank { h.optString("text", "") }.trim()
+            if (text.isBlank()) continue
+            val color = h.optString("color", "mark").ifBlank { "mark" }
+            lines += "> [$color] $text"
+            lines += ""
+        }
+        return lines.joinToString("\n")
     }
 
     /**
@@ -164,6 +220,21 @@ class EstudiaApi(
                 throw EstudiaApiException("HTTP ${response.code}: $text")
             }
             return JSONObject(text)
+        }
+    }
+
+    private fun getText(path: String): String {
+        val request = Request.Builder()
+            .url(normalizeUrl(path))
+            .header("X-KEY", apiKey)
+            .get()
+            .build()
+        client.newCall(request).execute().use { response ->
+            val text = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw EstudiaApiException("HTTP ${response.code}: $text")
+            }
+            return text
         }
     }
 

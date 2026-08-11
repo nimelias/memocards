@@ -53,13 +53,15 @@ class MainActivity : ComponentActivity() {
             var settings by remember { mutableStateOf(UiSettings()) }
             var ready by remember { mutableStateOf(false) }
             var deckStatsRefresh by remember { mutableIntStateOf(0) }
+            var homeRefresh by remember { mutableIntStateOf(0) }
             val scope = rememberCoroutineScope()
             val nav = rememberNavController()
             val backStack by nav.currentBackStackEntryAsState()
             val currentRoute = backStack?.destination?.route
             val showBottomBar = Routes.showsBottomBar(currentRoute)
+            val onDeckDetail = currentRoute?.startsWith("deck/") == true
             val bottomBarRoute =
-                if (currentRoute?.startsWith("deck/") == true) MainTab.Home.route else currentRoute
+                if (onDeckDetail) MainTab.Home.route else currentRoute
 
             LaunchedEffect(Unit) {
                 settings = repo.getUiSettings()
@@ -75,13 +77,19 @@ class MainActivity : ComponentActivity() {
                         if (showBottomBar) {
                             MemoBottomBar(
                                 currentRoute = bottomBarRoute,
+                                showContinueStudy = !onDeckDetail,
                                 onTab = { tab ->
-                                    nav.navigate(tab.route) {
-                                        popUpTo(nav.graph.findStartDestination().id) {
-                                            saveState = true
+                                    if (tab == MainTab.Home && onDeckDetail) {
+                                        nav.popBackStack(Routes.DeckList.route, inclusive = false)
+                                        homeRefresh += 1
+                                    } else {
+                                        nav.navigate(tab.route) {
+                                            popUpTo(nav.graph.findStartDestination().id) {
+                                                saveState = true
+                                            }
+                                            launchSingleTop = true
+                                            restoreState = tab != MainTab.Home
                                         }
-                                        launchSingleTop = true
-                                        restoreState = true
                                     }
                                 },
                                 onContinueStudy = {
@@ -92,7 +100,6 @@ class MainActivity : ComponentActivity() {
                                         } else {
                                             nav.navigate(Routes.DeckList.route) {
                                                 launchSingleTop = true
-                                                restoreState = true
                                             }
                                         }
                                     }
@@ -112,6 +119,7 @@ class MainActivity : ComponentActivity() {
                             DeckListScreen(
                                 repo = repo,
                                 settings = settings,
+                                refreshKey = homeRefresh,
                                 onToggleTheme = {
                                     scope.launch {
                                         val next =
@@ -178,8 +186,16 @@ class MainActivity : ComponentActivity() {
                             NoteEditorScreen(
                                 repo = repo,
                                 deckId = deckId,
-                                onBack = { nav.popBackStack() },
-                                onSaved = { nav.popBackStack() },
+                                onBack = {
+                                    deckStatsRefresh += 1
+                                    homeRefresh += 1
+                                    nav.popBackStack()
+                                },
+                                onSaved = {
+                                    deckStatsRefresh += 1
+                                    homeRefresh += 1
+                                    nav.popBackStack()
+                                },
                             )
                         }
 
@@ -211,7 +227,10 @@ class MainActivity : ComponentActivity() {
                                 settings = settings,
                                 advanceDays = advanceDays,
                                 queueFilter = queueFilter,
-                                onSessionEnd = { deckStatsRefresh += 1 },
+                                onSessionEnd = {
+                                    deckStatsRefresh += 1
+                                    homeRefresh += 1
+                                },
                                 onDone = { nav.popBackStack() },
                             )
                         }
@@ -254,6 +273,14 @@ class MainActivity : ComponentActivity() {
                                             ((height * 100).toInt() / 100f).coerceIn(1.15f, 2.0f)
                                         settings =
                                             repo.saveUiSettings(settings.copy(lineHeight = clamped))
+                                    }
+                                },
+                                onGlowIntensityChange = { intensity ->
+                                    scope.launch {
+                                        val clamped =
+                                            ((intensity * 100).toInt() / 100f).coerceIn(0f, 1.5f)
+                                        settings =
+                                            repo.saveUiSettings(settings.copy(glowIntensity = clamped))
                                     }
                                 },
                                 onRatingLayoutChange = { layout ->

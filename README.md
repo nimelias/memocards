@@ -36,4 +36,4 @@ Tras push, esperar el workflow verde y descargar el APK desde Artifacts.
 - Crear tarjetas (frente/reverso)
 - Repaso SM-2 (Otra vez / Difícil / Bien / Fácil)
 - Temas claro / oscuro / arena + escala de fuente
-- **Sincronización con estudIA** (puerto 30004): importar barajas, enviar estadísticas de repaso, sync automático
+- **Sincronización con estudIA** (`https://estudia.zatiki.xyz:3005`, auth X-KEY): importar barajas, enviar estadísticas de repaso, sync automático

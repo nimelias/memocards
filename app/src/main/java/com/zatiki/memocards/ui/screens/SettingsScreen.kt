@@ -52,6 +52,7 @@ fun SettingsScreen(
     onThemeChange: (ThemeName) -> Unit,
     onFontScaleChange: (Float) -> Unit,
     onLineHeightChange: (Float) -> Unit,
+    onGlowIntensityChange: (Float) -> Unit = {},
     onRatingLayoutChange: (RatingLayout) -> Unit,
     onArcLabelModeChange: (ArcLabelMode) -> Unit,
     showBack: Boolean = true,
@@ -179,6 +180,25 @@ fun SettingsScreen(
 
         Spacer(Modifier.height(24.dp))
         Text(
+            "Intensidad de degradados (${"%.0f".format(settings.glowIntensity * 100)}%)",
+            fontWeight = FontWeight.SemiBold,
+            color = palette.text,
+            fontSize = scaledSp(15f),
+        )
+        Text(
+            "Brillos de fondo en inicio, mazo y estudio.",
+            color = palette.muted,
+            fontSize = scaledSp(12f),
+        )
+        Slider(
+            value = settings.glowIntensity,
+            onValueChange = onGlowIntensityChange,
+            valueRange = 0f..1.5f,
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        Spacer(Modifier.height(24.dp))
+        Text(
             "Botones de dificultad",
             fontWeight = FontWeight.SemiBold,
             color = palette.text,
@@ -255,7 +275,7 @@ fun SettingsScreen(
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            "Sincroniza barajas y envía estadísticas de repaso al servidor estudIA (puerto 30004).",
+            "Sincroniza barajas y envía estadísticas de repaso a estudIA (X-KEY, sin login).",
             color = palette.muted,
             fontSize = scaledSp(12f),
         )
