@@ -56,6 +56,7 @@ import com.zatiki.memocards.domain.EstudiaBookSummary
 import com.zatiki.memocards.domain.EstudiaDeckSummary
 import com.zatiki.memocards.domain.HomeStats
 import com.zatiki.memocards.domain.UiSettings
+import com.zatiki.memocards.ui.components.AmbientGlowBackdrop
 import com.zatiki.memocards.ui.theme.LocalMemoPalette
 import com.zatiki.memocards.ui.theme.scaledSp
 import kotlinx.coroutines.launch
@@ -107,122 +108,161 @@ fun DeckListScreen(
             .fillMaxSize()
             .background(palette.background),
     ) {
-        PerspectiveGrid(
-            color = palette.primary.copy(alpha = 0.22f),
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(140.dp),
-        )
+        AmbientGlowBackdrop(theme = settings.theme) {
+            PerspectiveGrid(
+                color = palette.primary.copy(alpha = 0.22f),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(140.dp),
+            )
 
-        Column(
-            Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .padding(horizontal = 20.dp)
-                .padding(top = 16.dp, bottom = 12.dp),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth(),
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .padding(horizontal = 20.dp)
+                    .padding(top = 16.dp, bottom = 12.dp),
             ) {
-                Spacer(Modifier.weight(1f))
-                Box(
-                    Modifier
-                        .shadow(2.dp, RoundedCornerShape(50))
-                        .background(palette.primary, RoundedCornerShape(50))
-                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
+                    Spacer(Modifier.weight(1f))
                     Text(
                         "MEMOCARDS",
-                        color = palette.onPrimary,
+                        color = palette.text,
                         fontWeight = FontWeight.Bold,
-                        fontSize = scaledSp(14f),
-                        letterSpacing = 1.2.sp,
+                        fontSize = scaledSp(16f),
+                        letterSpacing = 2.sp,
                     )
-                }
-                Spacer(Modifier.weight(1f))
-                IconButton(onClick = onToggleTheme) {
-                    Icon(
-                        if (settings.theme.isDark) Icons.Outlined.LightMode else Icons.Outlined.DarkMode,
-                        contentDescription = "Tema",
-                        tint = palette.primary,
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(20.dp))
-
-            val statsShape = RoundedCornerShape(18.dp)
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .shadow(2.dp, statsShape)
-                    .background(palette.surface, statsShape)
-                    .padding(vertical = 20.dp, horizontal = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                StatBlock(
-                    value = homeStats.cardsDone.toString(),
-                    label = "Cards Done",
-                    modifier = Modifier.weight(1f),
-                )
-                Box(
-                    Modifier
-                        .width(1.dp)
-                        .height(44.dp)
-                        .background(palette.border),
-                )
-                StatBlock(
-                    value = homeStats.leftToAnswer.toString(),
-                    label = "Left to Answer",
-                    modifier = Modifier.weight(1f),
-                )
-            }
-
-            Spacer(Modifier.height(18.dp))
-
-            TextButton(
-                onClick = {
-                    scope.launch {
-                        importLoading = true
-                        importMessage = null
-                        val sync = repo.getSyncSettings()
-                        remoteDecks = repo.listEstudiaDecks(sync)
-                        remoteBooks = repo.listEstudiaBooks(sync)
-                        importLoading = false
-                        if (remoteDecks.isEmpty() && remoteBooks.isEmpty()) {
-                            importMessage = "Configura estudIA en Ajustes o no hay barajas/libros"
-                        } else {
-                            showImport = true
-                        }
+                    Spacer(Modifier.weight(1f))
+                    IconButton(onClick = onToggleTheme) {
+                        Icon(
+                            if (settings.theme.isDark) Icons.Outlined.LightMode else Icons.Outlined.DarkMode,
+                            contentDescription = "Tema",
+                            tint = palette.primary,
+                        )
                     }
-                },
-                enabled = !importLoading,
-                contentPadding = PaddingValues(0.dp),
-            ) {
-                if (importLoading) {
-                    CircularProgressIndicator(
-                        strokeWidth = 2.dp,
-                        modifier = Modifier.size(14.dp),
-                        color = palette.primary,
-                    )
-                    Spacer(Modifier.width(8.dp))
                 }
-                Text("Importar estudIA", color = palette.primary, fontSize = scaledSp(13f))
-            }
-            importMessage?.let {
-                Text(it, color = palette.muted, fontSize = scaledSp(12f))
-            }
 
-            Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(20.dp))
 
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = PaddingValues(bottom = 24.dp),
-                modifier = Modifier.weight(1f),
-            ) {
-                if (books.isNotEmpty()) {
+                val statsShape = RoundedCornerShape(18.dp)
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .shadow(2.dp, statsShape)
+                        .background(palette.surface, statsShape)
+                        .padding(vertical = 20.dp, horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    StatBlock(
+                        value = homeStats.cardsDone.toString(),
+                        label = "Cards Done",
+                        modifier = Modifier.weight(1f),
+                    )
+                    Box(
+                        Modifier
+                            .width(1.dp)
+                            .height(44.dp)
+                            .background(palette.border),
+                    )
+                    StatBlock(
+                        value = homeStats.leftToAnswer.toString(),
+                        label = "Left to Answer",
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+
+                Spacer(Modifier.height(18.dp))
+
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            importLoading = true
+                            importMessage = null
+                            val sync = repo.getSyncSettings()
+                            remoteDecks = repo.listEstudiaDecks(sync)
+                            remoteBooks = repo.listEstudiaBooks(sync)
+                            importLoading = false
+                            if (remoteDecks.isEmpty() && remoteBooks.isEmpty()) {
+                                importMessage = "Configura estudIA en Ajustes o no hay barajas/libros"
+                            } else {
+                                showImport = true
+                            }
+                        }
+                    },
+                    enabled = !importLoading,
+                    contentPadding = PaddingValues(0.dp),
+                ) {
+                    if (importLoading) {
+                        CircularProgressIndicator(
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(14.dp),
+                            color = palette.primary,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    Text("Importar estudIA", color = palette.primary, fontSize = scaledSp(13f))
+                }
+                importMessage?.let {
+                    Text(it, color = palette.muted, fontSize = scaledSp(12f))
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(bottom = 24.dp),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    if (books.isNotEmpty()) {
+                        item {
+                            Column {
+                                Box(
+                                    Modifier
+                                        .background(palette.surface, RoundedCornerShape(50))
+                                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                                ) {
+                                    Text(
+                                        "LIBROS",
+                                        color = palette.primary,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = scaledSp(12f),
+                                    )
+                                }
+                                Spacer(Modifier.height(8.dp))
+                            }
+                        }
+                        items(books, key = { "book-${it.id}" }) { book ->
+                            val shape = RoundedCornerShape(14.dp)
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .background(palette.surface, shape)
+                                    .clickable { onOpenBook(book.id) }
+                                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    book.title,
+                                    color = palette.text,
+                                    fontSize = scaledSp(16f),
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Text(
+                                    "Leer",
+                                    color = palette.primary,
+                                    fontSize = scaledSp(14f),
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
+                        }
+                        item { Spacer(Modifier.height(12.dp)) }
+                    }
+
                     item {
                         Column {
                             Box(
@@ -231,7 +271,7 @@ fun DeckListScreen(
                                     .padding(horizontal = 14.dp, vertical = 6.dp),
                             ) {
                                 Text(
-                                    "LIBROS",
+                                    "DECKS",
                                     color = palette.primary,
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = scaledSp(12f),
@@ -240,84 +280,47 @@ fun DeckListScreen(
                             Spacer(Modifier.height(8.dp))
                         }
                     }
-                    items(books, key = { "book-${it.id}" }) { book ->
-                        val shape = RoundedCornerShape(14.dp)
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .background(palette.surface, shape)
-                                .clickable { onOpenBook(book.id) }
-                                .padding(horizontal = 16.dp, vertical = 14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
+
+                    if (decks.isEmpty()) {
+                        item {
                             Text(
-                                book.title,
-                                color = palette.text,
-                                fontSize = scaledSp(16f),
-                                fontWeight = FontWeight.Medium,
-                                modifier = Modifier.weight(1f),
-                            )
-                            Text(
-                                "Leer",
-                                color = palette.primary,
-                                fontSize = scaledSp(14f),
-                                fontWeight = FontWeight.SemiBold,
+                                "Sin mazos todavía. Importa desde estudIA para comenzar.",
+                                color = palette.muted,
+                                fontSize = scaledSp(15f),
                             )
                         }
-                    }
-                    item { Spacer(Modifier.height(12.dp)) }
-                }
-
-                item {
-                    Column {
-                        Box(
-                            Modifier
-                                .background(palette.surface, RoundedCornerShape(50))
-                                .padding(horizontal = 14.dp, vertical = 6.dp),
-                        ) {
-                            Text(
-                                "DECKS",
-                                color = palette.primary,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = scaledSp(12f),
-                            )
-                        }
-                        Spacer(Modifier.height(8.dp))
-                    }
-                }
-
-                if (decks.isEmpty()) {
-                    item {
-                        Text(
-                            "Sin mazos todavía. Importa desde estudIA para comenzar.",
-                            color = palette.muted,
-                            fontSize = scaledSp(15f),
-                        )
-                    }
-                } else {
-                    items(decks, key = { it.deck.id }) { summary ->
-                        val shape = RoundedCornerShape(14.dp)
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .background(palette.surface, shape)
-                                .clickable { onOpenDeck(summary.deck) }
-                                .padding(horizontal = 16.dp, vertical = 14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                summary.deck.name,
-                                color = palette.text,
-                                fontSize = scaledSp(16f),
-                                fontWeight = FontWeight.Medium,
-                                modifier = Modifier.weight(1f),
-                            )
-                            Text(
-                                summary.cardCount.toString(),
-                                color = palette.primary,
-                                fontSize = scaledSp(16f),
-                                fontWeight = FontWeight.Bold,
-                            )
+                    } else {
+                        items(decks, key = { it.deck.id }) { summary ->
+                            val shape = RoundedCornerShape(14.dp)
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .background(palette.surface, shape)
+                                    .clickable { onOpenDeck(summary.deck) }
+                                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        summary.deck.name,
+                                        color = palette.text,
+                                        fontSize = scaledSp(16f),
+                                        fontWeight = FontWeight.Medium,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    Text(
+                                        summary.cardCount.toString(),
+                                        color = palette.primary,
+                                        fontSize = scaledSp(16f),
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                }
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    typeSummaryLabel(summary),
+                                    color = palette.muted,
+                                    fontSize = scaledSp(12f),
+                                )
+                            }
                         }
                     }
                 }
@@ -401,6 +404,14 @@ private fun StatBlock(
             fontSize = scaledSp(13f),
         )
     }
+}
+
+private fun typeSummaryLabel(summary: DeckSummary): String {
+    val parts = buildList {
+        if (summary.clozeCount > 0) add("${summary.clozeCount} cloze")
+        if (summary.qaCount > 0) add("${summary.qaCount} Q&A")
+    }
+    return if (parts.isEmpty()) "${summary.cardCount} cartas" else parts.joinToString(" · ")
 }
 
 @Composable

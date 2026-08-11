@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -47,6 +46,9 @@ import com.zatiki.memocards.domain.Deck
 import com.zatiki.memocards.domain.DeckBucketStats
 import com.zatiki.memocards.domain.DeckSettings
 import com.zatiki.memocards.domain.Note
+import com.zatiki.memocards.domain.UiSettings
+import com.zatiki.memocards.ui.ClozeFormat
+import com.zatiki.memocards.ui.components.AmbientGlowBackdrop
 import com.zatiki.memocards.ui.theme.LocalMemoPalette
 import com.zatiki.memocards.ui.theme.scaledSp
 import kotlinx.coroutines.launch
@@ -56,6 +58,8 @@ fun DeckDetailScreen(
     repo: MemoRepository,
     deckId: Long,
     deckName: String,
+    settings: UiSettings,
+    refreshKey: Int = 0,
     onReview: (queueFilter: String) -> Unit,
     onPreviewReview: (advanceDays: Int) -> Unit,
     onAddNote: () -> Unit,
@@ -77,10 +81,10 @@ fun DeckDetailScreen(
         minRepText = (deck?.minRepetitions ?: 1).toString()
     }
 
-    LaunchedEffect(deckId) { reload() }
+    LaunchedEffect(deckId, refreshKey) { reload() }
     DisposableEffect(lifecycleOwner, deckId) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
+            if (event == Lifecycle.Event.ON_RESUME || event == Lifecycle.Event.ON_START) {
                 scope.launch { reload() }
             }
         }
@@ -94,49 +98,48 @@ fun DeckDetailScreen(
     } else {
         ((buckets.total - left).toFloat() / buckets.total).coerceIn(0f, 1f)
     }
+    val clozeCount = notes.count { ClozeFormat.isCloze(it.fields.front) }
+    val qaCount = notes.size - clozeCount
 
-    LazyColumn(
-        Modifier
-            .fillMaxSize()
-            .background(palette.background)
-            .statusBarsPadding()
-            .navigationBarsPadding()
-            .padding(horizontal = 20.dp),
-        contentPadding = PaddingValues(top = 8.dp, bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        item {
+    AmbientGlowBackdrop(theme = settings.theme) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .statusBarsPadding(),
+        ) {
             Text(
                 deckName,
                 fontSize = scaledSp(22f),
                 fontWeight = FontWeight.Bold,
                 color = palette.text,
-            )
-        }
-
-        item {
-            val heroShape = RoundedCornerShape(18.dp)
-            Column(
-                Modifier
+                modifier = Modifier
                     .fillMaxWidth()
-                    .background(palette.surface, heroShape)
-                    .padding(16.dp),
+                    .background(palette.background.copy(alpha = 0.72f))
+                    .padding(horizontal = 20.dp, vertical = 10.dp),
+            )
+
+            LazyColumn(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp),
+                contentPadding = PaddingValues(top = 4.dp, bottom = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            deckName,
-                            color = palette.text,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = scaledSp(18f),
-                        )
-                        Spacer(Modifier.height(4.dp))
+                item {
+                    val heroShape = RoundedCornerShape(18.dp)
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(palette.surface, heroShape)
+                            .padding(16.dp),
+                    ) {
                         Text(
                             "${buckets.total - left}/${buckets.total} cartas al día",
                             color = palette.muted,
                             fontSize = scaledSp(13f),
                         )
-                        Spacer(Modifier.height(10.dp))
+                        Spacer(Modifier.height(8.dp))
                         LinearProgressIndicator(
                             progress = { progress },
                             modifier = Modifier
@@ -146,155 +149,201 @@ fun DeckDetailScreen(
                             color = palette.primary,
                             trackColor = palette.border,
                         )
+                        Spacer(Modifier.height(10.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TypeChip(label = "Cloze", count = clozeCount)
+                            TypeChip(label = "Q&A", count = qaCount)
+                        }
                     }
                 }
-            }
-        }
 
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onAddNote, modifier = Modifier.weight(1f)) {
-                    Text("+ Tarjeta")
-                }
-                OutlinedButton(
-                    onClick = { onPreviewReview(7) },
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text("+7 días")
-                }
-            }
-        }
-
-        item {
-            Text(
-                "Por estado",
-                fontWeight = FontWeight.SemiBold,
-                color = palette.text,
-                fontSize = scaledSp(15f),
-            )
-        }
-
-        item {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                BucketCard(
-                    title = "Nuevas",
-                    subtitle = "Por aprender",
-                    count = buckets.newCount,
-                    percent = buckets.percentOf(buckets.newCount),
-                    enabled = buckets.newCount > 0,
-                    onStudy = { onReview(CardQueue.NEW.value) },
-                    modifier = Modifier.weight(1f),
-                )
-                BucketCard(
-                    title = "Aprendizaje",
-                    subtitle = "En curso",
-                    count = buckets.learningCount,
-                    percent = buckets.percentOf(buckets.learningCount),
-                    enabled = buckets.learningCount > 0,
-                    onStudy = { onReview(CardQueue.LEARNING.value) },
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-
-        item {
-            BucketCard(
-                title = "Repaso",
-                subtitle = "Pendientes hoy",
-                count = buckets.reviewDueCount,
-                percent = buckets.percentOf(buckets.reviewDueCount),
-                enabled = buckets.reviewDueCount > 0,
-                onStudy = { onReview(CardQueue.REVIEW.value) },
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-
-        item {
-            Spacer(Modifier.height(4.dp))
-            Text("Ajustes del mazo", fontWeight = FontWeight.SemiBold, color = palette.text, fontSize = scaledSp(15f))
-        }
-
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = studyDaysText,
-                    onValueChange = { studyDaysText = it.filter { ch -> ch.isDigit() } },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                    label = { Text("Días estudio") },
-                )
-                OutlinedTextField(
-                    value = minRepText,
-                    onValueChange = { minRepText = it.filter { ch -> ch.isDigit() } },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                    label = { Text("Min. reps") },
-                )
-            }
-        }
-
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(
-                    onClick = {
-                        scope.launch {
-                            repo.updateDeckSettings(
-                                deckId,
-                                DeckSettings(
-                                    studyDays = studyDaysText.toIntOrNull(),
-                                    minRepetitions = minRepText.toIntOrNull() ?: 1,
-                                ),
-                            )
-                            reload()
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = onAddNote, modifier = Modifier.weight(1f)) {
+                            Text("+ Tarjeta")
                         }
-                    },
-                    modifier = Modifier.weight(1f),
-                ) { Text("Guardar") }
-                OutlinedButton(
-                    onClick = {
-                        scope.launch {
-                            repo.resetDeck(deckId)
-                            reload()
+                        OutlinedButton(
+                            onClick = { onPreviewReview(7) },
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text("+7 días")
                         }
-                    },
-                    modifier = Modifier.weight(1f),
-                ) { Text("Reiniciar") }
-            }
-        }
+                    }
+                }
 
-        item {
-            Spacer(Modifier.height(4.dp))
-            Text("Tarjetas", fontWeight = FontWeight.SemiBold, color = palette.text, fontSize = scaledSp(15f))
-        }
-
-        if (notes.isEmpty()) {
-            item {
-                Text("Sin tarjetas en este mazo.", color = palette.muted)
-            }
-        } else {
-            items(notes, key = { it.id }) { note ->
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, palette.border, RoundedCornerShape(10.dp))
-                        .background(palette.card, RoundedCornerShape(10.dp))
-                        .padding(12.dp),
-                ) {
+                item {
                     Text(
-                        note.fields.front.ifBlank { "(sin frente)" },
+                        "Por estado",
+                        fontWeight = FontWeight.SemiBold,
                         color = palette.text,
                         fontSize = scaledSp(15f),
                     )
-                    if (note.fields.back.isNotBlank()) {
-                        Spacer(Modifier.height(4.dp))
-                        Text(note.fields.back, color = palette.muted, fontSize = scaledSp(13f))
+                }
+
+                item {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        BucketCard(
+                            title = "Nuevas",
+                            subtitle = "Por aprender",
+                            count = buckets.newCount,
+                            percent = buckets.percentOf(buckets.newCount),
+                            enabled = buckets.newCount > 0,
+                            onStudy = { onReview(CardQueue.NEW.value) },
+                            modifier = Modifier.weight(1f),
+                        )
+                        BucketCard(
+                            title = "Aprendizaje",
+                            subtitle = "En curso",
+                            count = buckets.learningCount,
+                            percent = buckets.percentOf(buckets.learningCount),
+                            enabled = buckets.learningCount > 0,
+                            onStudy = { onReview(CardQueue.LEARNING.value) },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+
+                item {
+                    BucketCard(
+                        title = "Repaso",
+                        subtitle = "Pendientes hoy",
+                        count = buckets.reviewDueCount,
+                        percent = buckets.percentOf(buckets.reviewDueCount),
+                        enabled = buckets.reviewDueCount > 0,
+                        onStudy = { onReview(CardQueue.REVIEW.value) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+
+                item {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Ajustes del mazo",
+                        fontWeight = FontWeight.SemiBold,
+                        color = palette.text,
+                        fontSize = scaledSp(15f),
+                    )
+                }
+
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = studyDaysText,
+                            onValueChange = { studyDaysText = it.filter { ch -> ch.isDigit() } },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            label = { Text("Días estudio") },
+                        )
+                        OutlinedTextField(
+                            value = minRepText,
+                            onValueChange = { minRepText = it.filter { ch -> ch.isDigit() } },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            label = { Text("Min. reps") },
+                        )
+                    }
+                }
+
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    repo.updateDeckSettings(
+                                        deckId,
+                                        DeckSettings(
+                                            studyDays = studyDaysText.toIntOrNull(),
+                                            minRepetitions = minRepText.toIntOrNull() ?: 1,
+                                        ),
+                                    )
+                                    reload()
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Guardar") }
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    repo.resetDeck(deckId)
+                                    reload()
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Reiniciar") }
+                    }
+                }
+
+                item {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Tarjetas",
+                        fontWeight = FontWeight.SemiBold,
+                        color = palette.text,
+                        fontSize = scaledSp(15f),
+                    )
+                }
+
+                if (notes.isEmpty()) {
+                    item {
+                        Text("Sin tarjetas en este mazo.", color = palette.muted)
+                    }
+                } else {
+                    items(notes, key = { it.id }) { note ->
+                        val cloze = ClozeFormat.isCloze(note.fields.front)
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, palette.border, RoundedCornerShape(10.dp))
+                                .background(palette.card, RoundedCornerShape(10.dp))
+                                .padding(12.dp),
+                        ) {
+                            Box(
+                                Modifier
+                                    .background(palette.primary.copy(alpha = 0.14f), RoundedCornerShape(50))
+                                    .padding(horizontal = 10.dp, vertical = 3.dp),
+                            ) {
+                                Text(
+                                    if (cloze) "Cloze" else "Q&A",
+                                    color = palette.primary,
+                                    fontSize = scaledSp(11f),
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                note.fields.front.ifBlank { "(sin frente)" },
+                                color = palette.text,
+                                fontSize = scaledSp(15f),
+                            )
+                            if (note.fields.back.isNotBlank()) {
+                                Spacer(Modifier.height(4.dp))
+                                Text(note.fields.back, color = palette.muted, fontSize = scaledSp(13f))
+                            }
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun TypeChip(label: String, count: Int) {
+    val palette = LocalMemoPalette.current
+    Box(
+        Modifier
+            .background(palette.primary.copy(alpha = 0.12f), RoundedCornerShape(50))
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+    ) {
+        Text(
+            "$label · $count",
+            color = palette.primary,
+            fontSize = scaledSp(12f),
+            fontWeight = FontWeight.Medium,
+        )
     }
 }
 

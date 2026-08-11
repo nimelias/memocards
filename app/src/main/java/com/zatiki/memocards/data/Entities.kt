@@ -193,6 +193,11 @@ data class NoteSearchRow(
     @ColumnInfo(name = "fields_json") val fieldsJson: String,
 )
 
+data class NoteTypeRow(
+    @ColumnInfo(name = "deck_id") val deckId: Long,
+    @ColumnInfo(name = "fields_json") val fieldsJson: String,
+)
+
 data class LastReviewedDeckRow(
     @ColumnInfo(name = "deck_id") val deckId: Long,
     @ColumnInfo(name = "last_reviewed_at") val lastReviewedAt: Long,
@@ -303,6 +308,9 @@ interface MemoDao {
         """,
     )
     suspend fun cardCountsByDeck(): List<DeckCardCount>
+
+    @Query("SELECT deck_id, fields_json FROM notes")
+    suspend fun listNoteTypeRows(): List<NoteTypeRow>
 
     @Query("SELECT queue, COUNT(*) AS count FROM cards GROUP BY queue")
     suspend fun queueCounts(): List<QueueCount>

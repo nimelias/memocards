@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -51,11 +52,14 @@ class MainActivity : ComponentActivity() {
         setContent {
             var settings by remember { mutableStateOf(UiSettings()) }
             var ready by remember { mutableStateOf(false) }
+            var deckStatsRefresh by remember { mutableIntStateOf(0) }
             val scope = rememberCoroutineScope()
             val nav = rememberNavController()
             val backStack by nav.currentBackStackEntryAsState()
             val currentRoute = backStack?.destination?.route
-            val showBottomBar = currentRoute in Routes.tabRoutes
+            val showBottomBar = Routes.showsBottomBar(currentRoute)
+            val bottomBarRoute =
+                if (currentRoute?.startsWith("deck/") == true) MainTab.Home.route else currentRoute
 
             LaunchedEffect(Unit) {
                 settings = repo.getUiSettings()
@@ -70,7 +74,7 @@ class MainActivity : ComponentActivity() {
                     bottomBar = {
                         if (showBottomBar) {
                             MemoBottomBar(
-                                currentRoute = currentRoute,
+                                currentRoute = bottomBarRoute,
                                 onTab = { tab ->
                                     nav.navigate(tab.route) {
                                         popUpTo(nav.graph.findStartDestination().id) {
@@ -154,6 +158,8 @@ class MainActivity : ComponentActivity() {
                                 repo = repo,
                                 deckId = deckId,
                                 deckName = deckName,
+                                settings = settings,
+                                refreshKey = deckStatsRefresh,
                                 onReview = { queueFilter ->
                                     nav.navigate(Routes.Review.create(deckId, queueFilter = queueFilter))
                                 },
@@ -205,6 +211,7 @@ class MainActivity : ComponentActivity() {
                                 settings = settings,
                                 advanceDays = advanceDays,
                                 queueFilter = queueFilter,
+                                onSessionEnd = { deckStatsRefresh += 1 },
                                 onDone = { nav.popBackStack() },
                             )
                         }

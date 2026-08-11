@@ -100,10 +100,18 @@ data class HomeStats(
 data class DeckSummary(
     val deck: Deck,
     val cardCount: Int,
+    val clozeCount: Int = 0,
+    val qaCount: Int = 0,
 )
 
 data class DayActivity(
     val dayStart: Long,
+    val reviewCount: Int,
+)
+
+/** Actividad por hora del día actual (granularidad intradía). */
+data class HourActivity(
+    val hour: Int,
     val reviewCount: Int,
 )
 
@@ -114,6 +122,7 @@ data class ActivityStats(
     val learningCount: Int,
     val reviewCount: Int,
     val heatmap: List<DayActivity>,
+    val hourlyToday: List<HourActivity> = emptyList(),
 )
 
 data class NoteSearchHit(

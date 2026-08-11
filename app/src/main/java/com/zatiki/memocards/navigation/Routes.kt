@@ -29,5 +29,12 @@ sealed class Routes(val route: String) {
             Search.route,
             Settings.route,
         )
+
+        /** Bottom bar visible en tabs y en detalle de mazo. */
+        fun showsBottomBar(route: String?): Boolean {
+            if (route == null) return false
+            if (route in tabRoutes) return true
+            return route.startsWith("deck/")
+        }
     }
 }

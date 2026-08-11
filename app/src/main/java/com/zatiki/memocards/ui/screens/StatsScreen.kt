@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -34,6 +35,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.zatiki.memocards.data.MemoRepository
 import com.zatiki.memocards.domain.ActivityStats
+import com.zatiki.memocards.domain.HourActivity
 import com.zatiki.memocards.ui.theme.LocalMemoPalette
 import com.zatiki.memocards.ui.theme.scaledSp
 import java.util.Calendar
@@ -53,13 +55,15 @@ fun StatsScreen(
         )
     }
 
-    LaunchedEffect(Unit) {
+    suspend fun reload() {
         stats = repo.getActivityStats()
     }
+
+    LaunchedEffect(Unit) { reload() }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                scope.launch { stats = repo.getActivityStats() }
+            if (event == Lifecycle.Event.ON_RESUME || event == Lifecycle.Event.ON_START) {
+                scope.launch { reload() }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -110,6 +114,14 @@ fun StatsScreen(
 
             Spacer(Modifier.height(4.dp))
             Text(
+                "Hoy por hora",
+                color = palette.muted,
+                fontSize = scaledSp(13f),
+            )
+            HourlyChart(hours = stats.hourlyToday)
+
+            Spacer(Modifier.height(4.dp))
+            Text(
                 heatmapTitle(stats),
                 color = palette.muted,
                 fontSize = scaledSp(13f),
@@ -134,6 +146,52 @@ private fun QueueRow(label: String, count: Int) {
             fontWeight = FontWeight.Bold,
             fontSize = scaledSp(16f),
         )
+    }
+}
+
+@Composable
+private fun HourlyChart(hours: List<HourActivity>) {
+    val palette = LocalMemoPalette.current
+    val max = (hours.maxOfOrNull { it.reviewCount } ?: 0).coerceAtLeast(1)
+    val active = hours.filter { it.reviewCount > 0 }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .height(88.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.Bottom,
+        ) {
+            hours.forEach { hour ->
+                val ratio = hour.reviewCount.toFloat() / max
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight(ratio.coerceAtLeast(0.04f))
+                        .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp))
+                        .background(
+                            if (hour.reviewCount == 0) palette.border
+                            else palette.primary.copy(alpha = 0.35f + ratio * 0.65f),
+                        ),
+                )
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text("0h", color = palette.muted, fontSize = scaledSp(11f))
+            Text("12h", color = palette.muted, fontSize = scaledSp(11f))
+            Text("23h", color = palette.muted, fontSize = scaledSp(11f))
+        }
+        if (active.isNotEmpty()) {
+            Text(
+                "Pico: ${active.maxBy { it.reviewCount }.hour}:00 · " +
+                    active.maxBy { it.reviewCount }.reviewCount + " cartas",
+                color = palette.text,
+                fontSize = scaledSp(12f),
+            )
+        }
     }
 }
 

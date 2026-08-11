@@ -12,6 +12,7 @@ import com.zatiki.memocards.domain.DeckBucketStats
 import com.zatiki.memocards.domain.DeckStats
 import com.zatiki.memocards.domain.DeckSummary
 import com.zatiki.memocards.domain.HomeStats
+import com.zatiki.memocards.domain.HourActivity
 import com.zatiki.memocards.domain.NoteSearchHit
 import com.zatiki.memocards.domain.Note
 import com.zatiki.memocards.domain.NoteFields
@@ -31,6 +32,7 @@ import com.zatiki.memocards.domain.SyncSettings
 import com.zatiki.memocards.domain.ThemeName
 import com.zatiki.memocards.domain.UiSettings
 import org.json.JSONObject
+import java.util.Calendar
 
 class MemoRepository(private val dao: MemoDao) {
 
@@ -250,8 +252,23 @@ class MemoRepository(private val dao: MemoDao) {
 
     suspend fun listDeckSummaries(): List<DeckSummary> {
         val counts = dao.cardCountsByDeck().associate { it.deckId to it.count }
+        val typeCounts = mutableMapOf<Long, Pair<Int, Int>>()
+        for (row in dao.listNoteTypeRows()) {
+            val (cloze, qa) = typeCounts[row.deckId] ?: (0 to 0)
+            if (isClozeFront(parseFields(row.fieldsJson).front)) {
+                typeCounts[row.deckId] = (cloze + 1) to qa
+            } else {
+                typeCounts[row.deckId] = cloze to (qa + 1)
+            }
+        }
         return listDecks().map { deck ->
-            DeckSummary(deck = deck, cardCount = counts[deck.id] ?: 0)
+            val types = typeCounts[deck.id] ?: (0 to 0)
+            DeckSummary(
+                deck = deck,
+                cardCount = counts[deck.id] ?: 0,
+                clozeCount = types.first,
+                qaCount = types.second,
+            )
         }
     }
 
@@ -265,18 +282,25 @@ class MemoRepository(private val dao: MemoDao) {
         var cardsToday = 0
         var elapsedToday = 0L
         val byDay = mutableMapOf<Long, Int>()
+        val byHour = IntArray(24)
+        val cal = Calendar.getInstance()
         for (stamp in stamps) {
             val bucket = StudyPeriod.startOfDay(stamp.reviewedAt)
             byDay[bucket] = (byDay[bucket] ?: 0) + 1
             if (stamp.reviewedAt in dayStart..endOfDay) {
                 cardsToday += 1
                 elapsedToday += stamp.elapsedMs.coerceAtLeast(0L)
+                cal.timeInMillis = stamp.reviewedAt
+                byHour[cal.get(Calendar.HOUR_OF_DAY)] += 1
             }
         }
 
         val heatmap = (0 until heatmapDays).map { offset ->
             val d = dayStart - (heatmapDays - 1L - offset) * MS_PER_DAY
             DayActivity(dayStart = d, reviewCount = byDay[d] ?: 0)
+        }
+        val hourlyToday = (0 until 24).map { hour ->
+            HourActivity(hour = hour, reviewCount = byHour[hour])
         }
 
         var newCount = 0
@@ -297,6 +321,7 @@ class MemoRepository(private val dao: MemoDao) {
             learningCount = learningCount,
             reviewCount = reviewCount,
             heatmap = heatmap,
+            hourlyToday = hourlyToday,
         )
     }
 
@@ -778,6 +803,11 @@ class MemoRepository(private val dao: MemoDao) {
 
     companion object {
         private const val MS_PER_DAY = 86_400_000L
+        private val CLOZE_EMBEDDED = Regex("""\{\{c\d+::""")
+
+        private fun isClozeFront(front: String): Boolean =
+            front.contains("[...]") || CLOZE_EMBEDDED.containsMatchIn(front)
+
         private const val SOURCE_ESTUDIA = "estudia"
         private const val SYNC_BASE_URL_KEY = "sync.baseUrl"
         private const val SYNC_API_KEY_KEY = "sync.apiKey"

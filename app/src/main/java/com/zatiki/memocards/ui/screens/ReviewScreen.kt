@@ -82,6 +82,7 @@ import com.zatiki.memocards.domain.RatingLayout
 import com.zatiki.memocards.domain.ReviewRating
 import com.zatiki.memocards.domain.UiSettings
 import com.zatiki.memocards.ui.ClozeFormat
+import com.zatiki.memocards.ui.components.AmbientGlowBackdrop
 import com.zatiki.memocards.ui.theme.LocalMemoPalette
 import com.zatiki.memocards.ui.theme.scaledSp
 import kotlin.math.PI
@@ -116,6 +117,7 @@ fun ReviewScreen(
     advanceDays: Int = 0,
     queueFilter: String = "all",
     onDone: () -> Unit,
+    onSessionEnd: () -> Unit = {},
 ) {
     val palette = LocalMemoPalette.current
     val scope = rememberCoroutineScope()
@@ -149,7 +151,10 @@ fun ReviewScreen(
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            onSessionEnd()
+        }
     }
 
     val current = queue.getOrNull(index)
@@ -182,124 +187,126 @@ fun ReviewScreen(
     Box(
         Modifier
             .fillMaxSize()
-            .background(palette.background)
-            .statusBarsPadding()
-            .navigationBarsPadding(),
+            .background(palette.background),
     ) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-        ) {
-            when {
-                loading -> Text("Cargando tarjetas…", color = palette.muted)
-                finished || current == null -> {
-                    Column(
-                        Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(
-                            "Great Job! ✨",
-                            fontSize = scaledSp(28f),
-                            fontWeight = FontWeight.Bold,
-                            color = palette.text,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(deckName, color = palette.muted, fontSize = scaledSp(15f))
-                        Spacer(Modifier.height(24.dp))
-                        Button(
-                            onClick = { sessionKey += 1 },
-                            colors = ButtonDefaults.buttonColors(containerColor = palette.primary),
-                            modifier = Modifier.fillMaxWidth(0.7f),
+        AmbientGlowBackdrop(theme = settings.theme) {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+            ) {
+                when {
+                    loading -> Text("Cargando tarjetas…", color = palette.muted)
+                    finished || current == null -> {
+                        Column(
+                            Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            Text("RESTART", fontWeight = FontWeight.Bold)
-                        }
-                        Spacer(Modifier.height(10.dp))
-                        Button(
-                            onClick = onDone,
-                            colors = ButtonDefaults.buttonColors(containerColor = palette.surface),
-                        ) {
-                            Text("Volver al mazo", color = palette.text)
+                            Text(
+                                "Great Job! ✨",
+                                fontSize = scaledSp(28f),
+                                fontWeight = FontWeight.Bold,
+                                color = palette.text,
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(deckName, color = palette.muted, fontSize = scaledSp(15f))
+                            Spacer(Modifier.height(24.dp))
+                            Button(
+                                onClick = { sessionKey += 1 },
+                                colors = ButtonDefaults.buttonColors(containerColor = palette.primary),
+                                modifier = Modifier.fillMaxWidth(0.7f),
+                            ) {
+                                Text("RESTART", fontWeight = FontWeight.Bold)
+                            }
+                            Spacer(Modifier.height(10.dp))
+                            Button(
+                                onClick = onDone,
+                                colors = ButtonDefaults.buttonColors(containerColor = palette.surface),
+                            ) {
+                                Text("Volver al mazo", color = palette.text)
+                            }
                         }
                     }
-                }
-                else -> {
-                    val front = current.note.fields.front
-                    val back = current.note.fields.back
-                    val cloze = ClozeFormat.isCloze(front)
-                    key(current.card.id) {
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                deckName,
-                                color = palette.text,
-                                fontSize = scaledSp(20f),
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.weight(1f),
+                    else -> {
+                        val front = current.note.fields.front
+                        val back = current.note.fields.back
+                        val cloze = ClozeFormat.isCloze(front)
+                        key(current.card.id) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    deckName,
+                                    color = palette.text,
+                                    fontSize = scaledSp(18f),
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Text(
+                                    "${index + 1} / ${queue.size}",
+                                    color = palette.muted,
+                                    fontSize = scaledSp(14f),
+                                )
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            IntegratedStudyCard(
+                                front = front,
+                                back = back,
+                                cloze = cloze,
+                                revealed = revealed,
+                                onReveal = { revealBack() },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth(),
                             )
-                            Text(
-                                "${index + 1} / ${queue.size}",
-                                color = palette.muted,
-                                fontSize = scaledSp(15f),
-                            )
-                        }
-                        Spacer(Modifier.height(12.dp))
-                        IntegratedStudyCard(
-                            front = front,
-                            back = back,
-                            cloze = cloze,
-                            revealed = revealed,
-                            onReveal = { revealBack() },
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth(),
-                        )
-                        Spacer(Modifier.height(10.dp))
-                        if (revealed && settings.ratingLayout == RatingLayout.BAR) {
-                            RatingBar(
-                                onRate = { rating -> advanceAfterRating(current.card.id, rating) },
-                            )
-                        } else {
-                            Spacer(Modifier.height(56.dp))
+                            Spacer(Modifier.height(6.dp))
+                            if (revealed && settings.ratingLayout == RatingLayout.BAR) {
+                                RatingBar(
+                                    onRate = { rating -> advanceAfterRating(current.card.id, rating) },
+                                )
+                            } else {
+                                Spacer(Modifier.height(48.dp))
+                            }
                         }
                     }
                 }
             }
-        }
 
-        if (!loading && !finished && current != null && !revealed) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .pointerInput(Unit) {
-                        detectHorizontalDragGestures { _, dragAmount ->
-                            if (dragAmount < -36f) revealBack()
+            if (!loading && !finished && current != null && !revealed) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            detectHorizontalDragGestures { _, dragAmount ->
+                                if (dragAmount < -36f) revealBack()
+                            }
                         }
-                    }
-                    .clickable(
-                        indication = null,
-                        interactionSource = revealTapSource,
-                        onClick = { revealBack() },
-                    ),
-            )
-        }
+                        .clickable(
+                            indication = null,
+                            interactionSource = revealTapSource,
+                            onClick = { revealBack() },
+                        ),
+                )
+            }
 
-        if (
-            !loading &&
-            !finished &&
-            current != null &&
-            settings.ratingLayout.isArc
-        ) {
-            RatingArcMenu(
-                layout = settings.ratingLayout,
-                labelMode = settings.arcLabelMode,
-                interactive = revealed,
-                onRate = { rating -> advanceAfterRating(current.card.id, rating) },
-            )
+            if (
+                !loading &&
+                !finished &&
+                current != null &&
+                settings.ratingLayout.isArc
+            ) {
+                RatingArcMenu(
+                    layout = settings.ratingLayout,
+                    labelMode = settings.arcLabelMode,
+                    interactive = revealed,
+                    onRate = { rating -> advanceAfterRating(current.card.id, rating) },
+                )
+            }
         }
     }
 }
@@ -636,7 +643,7 @@ private fun IntegratedStudyCard(
             .shadow(10.dp, shape, clip = false)
             .border(1.dp, palette.border.copy(alpha = 0.45f), shape)
             .background(palette.card, shape)
-            .padding(horizontal = 22.dp, vertical = 24.dp),
+            .padding(horizontal = 18.dp, vertical = 16.dp),
     ) {
         Column(
             Modifier
@@ -695,12 +702,12 @@ private fun IntegratedStudyCard(
             }
         }
 
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(12.dp))
         if (!revealed) {
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp)
+                    .height(48.dp)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -722,7 +729,7 @@ private fun IntegratedStudyCard(
             Spacer(
                 Modifier
                     .fillMaxWidth()
-                    .height(52.dp),
+                    .height(48.dp),
             )
         }
     }
