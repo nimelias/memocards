@@ -30,6 +30,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,6 +45,9 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.zatiki.memocards.data.MemoRepository
 import com.zatiki.memocards.domain.Book
 import com.zatiki.memocards.domain.Deck
@@ -74,6 +78,7 @@ fun DeckListScreen(
     var remoteBooks by remember { mutableStateOf<List<EstudiaBookSummary>>(emptyList()) }
     var importLoading by remember { mutableStateOf(false) }
     var importMessage by remember { mutableStateOf<String?>(null) }
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     suspend fun reload() {
         decks = repo.listDeckSummaries()
@@ -86,6 +91,15 @@ fun DeckListScreen(
         reload()
         repo.syncEstudiaIfDue()
         reload()
+    }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                scope.launch { reload() }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     Box(
@@ -275,7 +289,7 @@ fun DeckListScreen(
                 if (decks.isEmpty()) {
                     item {
                         Text(
-                            "Sin mazos todavía. Usa + para crear el primero.",
+                            "Sin mazos todavía. Importa desde estudIA para comenzar.",
                             color = palette.muted,
                             fontSize = scaledSp(15f),
                         )

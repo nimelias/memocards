@@ -193,6 +193,11 @@ data class NoteSearchRow(
     @ColumnInfo(name = "fields_json") val fieldsJson: String,
 )
 
+data class LastReviewedDeckRow(
+    @ColumnInfo(name = "deck_id") val deckId: Long,
+    @ColumnInfo(name = "last_reviewed_at") val lastReviewedAt: Long,
+)
+
 @Dao
 interface MemoDao {
     @Query("SELECT * FROM decks ORDER BY name COLLATE NOCASE")
@@ -310,6 +315,19 @@ interface MemoDao {
         """,
     )
     suspend fun listReviewsSince(since: Long): List<ReviewStamp>
+
+    @Query(
+        """
+        SELECT n.deck_id AS deck_id, MAX(r.reviewed_at) AS last_reviewed_at
+        FROM review_log r
+        JOIN cards c ON c.id = r.card_id
+        JOIN notes n ON n.id = c.note_id
+        GROUP BY n.deck_id
+        ORDER BY last_reviewed_at DESC
+        LIMIT 1
+        """,
+    )
+    suspend fun lastReviewedDeck(): LastReviewedDeckRow?
 
     @Query(
         """

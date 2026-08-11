@@ -300,6 +300,9 @@ class MemoRepository(private val dao: MemoDao) {
         )
     }
 
+    /** Último mazo estudiado por actividad de review_log. */
+    suspend fun getLastReviewedDeckId(): Long? = dao.lastReviewedDeck()?.deckId
+
     suspend fun searchDecks(query: String): List<Deck> {
         val q = query.trim()
         if (q.isEmpty()) return emptyList()

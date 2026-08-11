@@ -14,8 +14,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Search
@@ -41,7 +41,7 @@ enum class MainTab(val route: String) {
 fun MemoBottomBar(
     currentRoute: String?,
     onTab: (MainTab) -> Unit,
-    onCreate: () -> Unit,
+    onContinueStudy: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val palette = LocalMemoPalette.current
@@ -83,12 +83,12 @@ fun MemoBottomBar(
                     .shadow(6.dp, RoundedCornerShape(14.dp))
                     .clip(RoundedCornerShape(14.dp))
                     .background(palette.primary)
-                    .clickable(onClick = onCreate),
+                    .clickable(onClick = onContinueStudy),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    Icons.Outlined.Add,
-                    contentDescription = "Nuevo mazo",
+                    Icons.Outlined.PlayArrow,
+                    contentDescription = "Continuar estudio",
                     tint = palette.onPrimary,
                     modifier = Modifier.size(28.dp),
                 )

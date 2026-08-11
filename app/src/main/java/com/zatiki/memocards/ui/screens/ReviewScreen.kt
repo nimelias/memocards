@@ -35,6 +35,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -71,6 +72,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.zatiki.memocards.data.MemoRepository
 import com.zatiki.memocards.domain.ArcLabelMode
 import com.zatiki.memocards.domain.CardWithNote
@@ -123,6 +127,7 @@ fun ReviewScreen(
     var finished by remember { mutableStateOf(false) }
     var revealedAt by remember { mutableStateOf(0L) }
     var sessionKey by remember { mutableIntStateOf(0) }
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     suspend fun loadQueue() {
         loading = true
@@ -136,6 +141,15 @@ fun ReviewScreen(
 
     LaunchedEffect(deckId, advanceDays, queueFilter, sessionKey) {
         loadQueue()
+    }
+    DisposableEffect(lifecycleOwner, deckId, advanceDays, queueFilter) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                scope.launch { loadQueue() }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     val current = queue.getOrNull(index)
@@ -175,7 +189,7 @@ fun ReviewScreen(
         Column(
             Modifier
                 .fillMaxSize()
-                .padding(horizontal = 20.dp, vertical = 16.dp),
+                .padding(horizontal = 20.dp, vertical = 12.dp),
         ) {
             when {
                 loading -> Text("Cargando tarjetas…", color = palette.muted)
@@ -233,7 +247,7 @@ fun ReviewScreen(
                                 fontSize = scaledSp(15f),
                             )
                         }
-                        Spacer(Modifier.height(16.dp))
+                        Spacer(Modifier.height(12.dp))
                         IntegratedStudyCard(
                             front = front,
                             back = back,
@@ -244,7 +258,7 @@ fun ReviewScreen(
                                 .weight(1f)
                                 .fillMaxWidth(),
                         )
-                        Spacer(Modifier.height(16.dp))
+                        Spacer(Modifier.height(10.dp))
                         if (revealed && settings.ratingLayout == RatingLayout.BAR) {
                             RatingBar(
                                 onRate = { rating -> advanceAfterRating(current.card.id, rating) },
@@ -681,8 +695,8 @@ private fun IntegratedStudyCard(
             }
         }
 
+        Spacer(Modifier.height(20.dp))
         if (!revealed) {
-            Spacer(Modifier.height(20.dp))
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -704,6 +718,12 @@ private fun IntegratedStudyCard(
                     )
                 }
             }
+        } else {
+            Spacer(
+                Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+            )
         }
     }
 }

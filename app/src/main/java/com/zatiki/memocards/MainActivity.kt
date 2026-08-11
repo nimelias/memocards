@@ -6,14 +6,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,7 +35,6 @@ import com.zatiki.memocards.ui.screens.ReviewScreen
 import com.zatiki.memocards.ui.screens.SearchScreen
 import com.zatiki.memocards.ui.screens.SettingsScreen
 import com.zatiki.memocards.ui.screens.StatsScreen
-import com.zatiki.memocards.ui.theme.LocalMemoPalette
 import com.zatiki.memocards.ui.theme.MemoCardsTheme
 import kotlinx.coroutines.launch
 
@@ -58,8 +51,6 @@ class MainActivity : ComponentActivity() {
         setContent {
             var settings by remember { mutableStateOf(UiSettings()) }
             var ready by remember { mutableStateOf(false) }
-            var showCreate by remember { mutableStateOf(false) }
-            var newDeckName by remember { mutableStateOf("") }
             val scope = rememberCoroutineScope()
             val nav = rememberNavController()
             val backStack by nav.currentBackStackEntryAsState()
@@ -89,9 +80,18 @@ class MainActivity : ComponentActivity() {
                                         restoreState = true
                                     }
                                 },
-                                onCreate = {
-                                    newDeckName = ""
-                                    showCreate = true
+                                onContinueStudy = {
+                                    scope.launch {
+                                        val lastDeckId = repo.getLastReviewedDeckId()
+                                        if (lastDeckId != null) {
+                                            nav.navigate(Routes.DeckDetail.create(lastDeckId))
+                                        } else {
+                                            nav.navigate(Routes.DeckList.route) {
+                                                launchSingleTop = true
+                                                restoreState = true
+                                            }
+                                        }
+                                    }
                                 },
                             )
                         }
@@ -154,7 +154,6 @@ class MainActivity : ComponentActivity() {
                                 repo = repo,
                                 deckId = deckId,
                                 deckName = deckName,
-                                onBack = { nav.popBackStack() },
                                 onReview = { queueFilter ->
                                     nav.navigate(Routes.Review.create(deckId, queueFilter = queueFilter))
                                 },
@@ -265,40 +264,6 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                     }
-                }
-
-                if (showCreate) {
-                    val palette = LocalMemoPalette.current
-                    AlertDialog(
-                        onDismissRequest = { showCreate = false },
-                        title = { Text("Nuevo mazo") },
-                        text = {
-                            OutlinedTextField(
-                                value = newDeckName,
-                                onValueChange = { newDeckName = it },
-                                singleLine = true,
-                                placeholder = { Text("Nombre del mazo", color = palette.muted) },
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        },
-                        confirmButton = {
-                            Button(
-                                onClick = {
-                                    val trimmed = newDeckName.trim()
-                                    if (trimmed.isEmpty()) return@Button
-                                    scope.launch {
-                                        val deck = repo.createDeck(trimmed)
-                                        showCreate = false
-                                        newDeckName = ""
-                                        nav.navigate(Routes.DeckDetail.create(deck.id))
-                                    }
-                                },
-                            ) { Text("Crear") }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = { showCreate = false }) { Text("Cancelar") }
-                        },
-                    )
                 }
             }
         }

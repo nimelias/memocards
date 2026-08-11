@@ -19,18 +19,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,6 +38,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.zatiki.memocards.data.MemoRepository
 import com.zatiki.memocards.domain.CardQueue
 import com.zatiki.memocards.domain.Deck
@@ -57,13 +56,13 @@ fun DeckDetailScreen(
     repo: MemoRepository,
     deckId: Long,
     deckName: String,
-    onBack: () -> Unit,
     onReview: (queueFilter: String) -> Unit,
     onPreviewReview: (advanceDays: Int) -> Unit,
     onAddNote: () -> Unit,
 ) {
     val palette = LocalMemoPalette.current
     val scope = rememberCoroutineScope()
+    val lifecycleOwner = LocalLifecycleOwner.current
     var deck by remember { mutableStateOf<Deck?>(null) }
     var notes by remember { mutableStateOf<List<Note>>(emptyList()) }
     var buckets by remember { mutableStateOf(DeckBucketStats(0, 0, 0, 0)) }
@@ -79,6 +78,15 @@ fun DeckDetailScreen(
     }
 
     LaunchedEffect(deckId) { reload() }
+    DisposableEffect(lifecycleOwner, deckId) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                scope.launch { reload() }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     val left = buckets.leftToStudy
     val progress = if (buckets.total <= 0) {
@@ -98,18 +106,12 @@ fun DeckDetailScreen(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Volver", tint = palette.text)
-                }
-                Text(
-                    deckName,
-                    fontSize = scaledSp(22f),
-                    fontWeight = FontWeight.Bold,
-                    color = palette.text,
-                    modifier = Modifier.weight(1f),
-                )
-            }
+            Text(
+                deckName,
+                fontSize = scaledSp(22f),
+                fontWeight = FontWeight.Bold,
+                color = palette.text,
+            )
         }
 
         item {
@@ -143,20 +145,6 @@ fun DeckDetailScreen(
                                 .clip(RoundedCornerShape(50)),
                             color = palette.primary,
                             trackColor = palette.border,
-                        )
-                    }
-                    Spacer(Modifier.size(12.dp))
-                    IconButton(
-                        onClick = { onReview("all") },
-                        modifier = Modifier
-                            .size(56.dp)
-                            .background(palette.primary, CircleShape),
-                    ) {
-                        Icon(
-                            Icons.Outlined.PlayArrow,
-                            contentDescription = "Repasar",
-                            tint = palette.onPrimary,
-                            modifier = Modifier.size(32.dp),
                         )
                     }
                 }
