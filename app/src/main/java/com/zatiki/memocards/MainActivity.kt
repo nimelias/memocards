@@ -77,7 +77,7 @@ class MainActivity : ComponentActivity() {
                         if (showBottomBar) {
                             MemoBottomBar(
                                 currentRoute = bottomBarRoute,
-                                showContinueStudy = !onDeckDetail,
+                                showContinueStudy = !onDeckDetail && currentRoute != Routes.Stats.route,
                                 onTab = { tab ->
                                     if (tab == MainTab.Home && onDeckDetail) {
                                         nav.popBackStack(Routes.DeckList.route, inclusive = false)
@@ -278,7 +278,7 @@ class MainActivity : ComponentActivity() {
                                 onGlowIntensityChange = { intensity ->
                                     scope.launch {
                                         val clamped =
-                                            ((intensity * 100).toInt() / 100f).coerceIn(0f, 1.5f)
+                                            ((intensity * 100).toInt() / 100f).coerceIn(0f, 2.0f)
                                         settings =
                                             repo.saveUiSettings(settings.copy(glowIntensity = clamped))
                                     }

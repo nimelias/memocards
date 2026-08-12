@@ -193,7 +193,7 @@ fun SettingsScreen(
         Slider(
             value = settings.glowIntensity,
             onValueChange = onGlowIntensityChange,
-            valueRange = 0f..1.5f,
+            valueRange = 0f..2.0f,
             modifier = Modifier.fillMaxWidth(),
         )
 
@@ -304,11 +304,7 @@ fun SettingsScreen(
                 onClick = {
                     scope.launch {
                         testing = true
-                        syncMessage = if (repo.testEstudiaConnection(syncSettings)) {
-                            "Conexión correcta"
-                        } else {
-                            "No se pudo conectar"
-                        }
+                        syncMessage = repo.testEstudiaConnectionMessage(syncSettings)
                         testing = false
                     }
                 },

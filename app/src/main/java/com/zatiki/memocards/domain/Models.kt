@@ -109,6 +109,8 @@ data class DayActivity(
     val reviewCount: Int,
     /** Suma de ratings (1–4) para colorear por feedback medio. */
     val ratingSum: Int = 0,
+    /** Conteo por rating: [again, hard, good, easy]. */
+    val ratingBuckets: List<Int> = listOf(0, 0, 0, 0),
 )
 
 /** Actividad por hora del día actual (granularidad intradía). */
@@ -116,6 +118,7 @@ data class HourActivity(
     val hour: Int,
     val reviewCount: Int,
     val ratingSum: Int = 0,
+    val ratingBuckets: List<Int> = listOf(0, 0, 0, 0),
 )
 
 data class ActivityStats(

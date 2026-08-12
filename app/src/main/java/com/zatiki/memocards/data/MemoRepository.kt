@@ -272,40 +272,65 @@ class MemoRepository(private val dao: MemoDao) {
         }
     }
 
-    suspend fun getActivityStats(heatmapDays: Int = 35): ActivityStats {
+    suspend fun getActivityStats(heatmapBuckets: Int = 35): ActivityStats {
         val ts = System.currentTimeMillis()
         val dayStart = StudyPeriod.startOfDay(ts)
         val endOfDay = dayStart + MS_PER_DAY - 1
-        val since = dayStart - (heatmapDays - 1L) * MS_PER_DAY
+        val since = dayStart - (heatmapBuckets - 1L) * MS_PER_DAY
         val stamps = dao.listReviewsSince(since)
 
         var cardsToday = 0
         var elapsedToday = 0L
-        val byDay = mutableMapOf<Long, Int>()
-        val ratingByDay = mutableMapOf<Long, Int>()
         val byHour = IntArray(24)
         val ratingByHour = IntArray(24)
+        val ratingBucketsByHour = Array(24) { IntArray(4) }
         val cal = Calendar.getInstance()
         for (stamp in stamps) {
-            val bucket = StudyPeriod.startOfDay(stamp.reviewedAt)
-            byDay[bucket] = (byDay[bucket] ?: 0) + 1
-            ratingByDay[bucket] = (ratingByDay[bucket] ?: 0) + stamp.rating.coerceIn(0, 4)
+            val normalized = stamp.rating.coerceIn(1, 4)
             if (stamp.reviewedAt in dayStart..endOfDay) {
                 cardsToday += 1
                 elapsedToday += stamp.elapsedMs.coerceAtLeast(0L)
                 cal.timeInMillis = stamp.reviewedAt
                 val hour = cal.get(Calendar.HOUR_OF_DAY)
                 byHour[hour] += 1
-                ratingByHour[hour] += stamp.rating.coerceIn(0, 4)
+                ratingByHour[hour] += normalized
+                ratingBucketsByHour[hour][normalized - 1] += 1
             }
         }
 
-        val heatmap = (0 until heatmapDays).map { offset ->
-            val d = dayStart - (heatmapDays - 1L - offset) * MS_PER_DAY
+        val allStamps = dao.listReviewsSince(0L)
+        val windowEnd = ts
+        val windowStart = if (allStamps.isEmpty()) {
+            dayStart - (heatmapBuckets - 1L) * MS_PER_DAY
+        } else {
+            val minTs = allStamps.minOf { it.reviewedAt }
+            val span = (windowEnd - minTs).coerceAtLeast(1L)
+            val bucketSize = kotlin.math.max(60L * 60L * 1000L, (span + heatmapBuckets - 1L) / heatmapBuckets)
+            windowEnd - bucketSize * heatmapBuckets
+        }
+        val bucketSizeMs = kotlin.math.max(1L, (windowEnd - windowStart) / heatmapBuckets)
+        val adaptiveCount = IntArray(heatmapBuckets)
+        val adaptiveRatingSum = IntArray(heatmapBuckets)
+        val adaptiveRatingBuckets = Array(heatmapBuckets) { IntArray(4) }
+        for (stamp in allStamps) {
+            if (stamp.reviewedAt < windowStart || stamp.reviewedAt > windowEnd) continue
+            val idx =
+                ((stamp.reviewedAt - windowStart) / bucketSizeMs)
+                    .toInt()
+                    .coerceIn(0, heatmapBuckets - 1)
+            val normalized = stamp.rating.coerceIn(1, 4)
+            adaptiveCount[idx] += 1
+            adaptiveRatingSum[idx] += normalized
+            adaptiveRatingBuckets[idx][normalized - 1] += 1
+        }
+
+        val heatmap = (0 until heatmapBuckets).map { index ->
+            val d = windowStart + index * bucketSizeMs
             DayActivity(
                 dayStart = d,
-                reviewCount = byDay[d] ?: 0,
-                ratingSum = ratingByDay[d] ?: 0,
+                reviewCount = adaptiveCount[index],
+                ratingSum = adaptiveRatingSum[index],
+                ratingBuckets = adaptiveRatingBuckets[index].toList(),
             )
         }
         val hourlyToday = (0 until 24).map { hour ->
@@ -313,6 +338,7 @@ class MemoRepository(private val dao: MemoDao) {
                 hour = hour,
                 reviewCount = byHour[hour],
                 ratingSum = ratingByHour[hour],
+                ratingBuckets = ratingBucketsByHour[hour].toList(),
             )
         }
 
@@ -582,9 +608,17 @@ class MemoRepository(private val dao: MemoDao) {
         return next
     }
 
-    suspend fun testEstudiaConnection(settings: SyncSettings): Boolean {
-        val api = estudiaApi(settings) ?: return false
-        return api.health()
+    suspend fun testEstudiaConnectionMessage(settings: SyncSettings): String {
+        val api = estudiaApi(settings) ?: return "Configura URL y X-KEY"
+        return try {
+            if (api.health()) {
+                "Conexión correcta"
+            } else {
+                "Sin respuesta saludable del servidor"
+            }
+        } catch (e: Exception) {
+            e.message?.take(220)?.ifBlank { "Error desconocido" } ?: "Error desconocido"
+        }
     }
 
     suspend fun listEstudiaProjects(settings: SyncSettings): List<EstudiaProject> {
