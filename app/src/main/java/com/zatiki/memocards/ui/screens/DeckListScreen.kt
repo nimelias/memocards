@@ -42,6 +42,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -80,7 +82,14 @@ fun DeckListScreen(
     var remoteBooks by remember { mutableStateOf<List<EstudiaBookSummary>>(emptyList()) }
     var importLoading by remember { mutableStateOf(false) }
     var importMessage by remember { mutableStateOf<String?>(null) }
+    var importLog by remember { mutableStateOf<List<String>>(emptyList()) }
     val lifecycleOwner = LocalLifecycleOwner.current
+    val clipboard = LocalClipboardManager.current
+
+    fun appendImportLog(line: String) {
+        val ts = System.currentTimeMillis()
+        importLog = (importLog + "[$ts] $line").takeLast(120)
+    }
 
     suspend fun reload() {
         decks = repo.listDeckSummaries()
@@ -186,14 +195,24 @@ fun DeckListScreen(
                         scope.launch {
                             importLoading = true
                             importMessage = null
-                            val sync = repo.getSyncSettings()
-                            remoteDecks = repo.listEstudiaDecks(sync)
-                            remoteBooks = repo.listEstudiaBooks(sync)
-                            importLoading = false
-                            if (remoteDecks.isEmpty() && remoteBooks.isEmpty()) {
-                                importMessage = "Configura estudIA en Ajustes o no hay barajas/libros"
-                            } else {
-                                showImport = true
+                            appendImportLog("Inicio de carga de catálogo estudIA")
+                            try {
+                                val sync = repo.getSyncSettings()
+                                remoteDecks = repo.listEstudiaDecks(sync)
+                                remoteBooks = repo.listEstudiaBooks(sync)
+                                if (remoteDecks.isEmpty() && remoteBooks.isEmpty()) {
+                                    importMessage = "Configura estudIA en Ajustes o no hay barajas/libros"
+                                    appendImportLog("Sin resultados de barajas/libros")
+                                } else {
+                                    appendImportLog("Catálogo cargado: ${remoteDecks.size} barajas, ${remoteBooks.size} libros")
+                                    showImport = true
+                                }
+                            } catch (e: Exception) {
+                                val cause = e.message?.take(220) ?: "Error desconocido"
+                                importMessage = "Error al cargar catálogo: $cause"
+                                appendImportLog("Error cargando catálogo: $cause")
+                            } finally {
+                                importLoading = false
                             }
                         }
                     },
@@ -212,6 +231,17 @@ fun DeckListScreen(
                 }
                 importMessage?.let {
                     Text(it, color = palette.muted, fontSize = scaledSp(12f))
+                }
+                if (importLog.isNotEmpty()) {
+                    TextButton(
+                        onClick = {
+                            clipboard.setText(AnnotatedString(importLog.joinToString("\n")))
+                            importMessage = "Log copiado al portapapeles"
+                        },
+                        contentPadding = PaddingValues(0.dp),
+                    ) {
+                        Text("Copiar log de importación", color = palette.primary, fontSize = scaledSp(13f))
+                    }
                 }
 
                 Spacer(Modifier.height(8.dp))
@@ -345,11 +375,20 @@ fun DeckListScreen(
                                 onClick = {
                                     scope.launch {
                                         importLoading = true
-                                        val bookId = repo.importEstudiaBook(remote.id)
-                                        importLoading = false
-                                        showImport = false
-                                        reload()
-                                        onOpenBook(bookId)
+                                        appendImportLog("Importando libro ${remote.id}: ${remote.title}")
+                                        try {
+                                            val bookId = repo.importEstudiaBook(remote.id)
+                                            appendImportLog("Libro importado OK idLocal=$bookId")
+                                            showImport = false
+                                            reload()
+                                            onOpenBook(bookId)
+                                        } catch (e: Exception) {
+                                            val cause = e.message?.take(220) ?: "Error desconocido"
+                                            importMessage = "Error importando libro: $cause"
+                                            appendImportLog("Fallo importando libro ${remote.id}: $cause")
+                                        } finally {
+                                            importLoading = false
+                                        }
                                     }
                                 },
                                 modifier = Modifier.fillMaxWidth(),
@@ -366,11 +405,20 @@ fun DeckListScreen(
                                 onClick = {
                                     scope.launch {
                                         importLoading = true
-                                        val deckId = repo.importEstudiaDeck(remote.id)
-                                        importLoading = false
-                                        showImport = false
-                                        reload()
-                                        decks.find { it.deck.id == deckId }?.let { onOpenDeck(it.deck) }
+                                        appendImportLog("Importando baraja ${remote.id}: ${remote.title}")
+                                        try {
+                                            val deckId = repo.importEstudiaDeck(remote.id)
+                                            appendImportLog("Baraja importada OK idLocal=$deckId")
+                                            showImport = false
+                                            reload()
+                                            decks.find { it.deck.id == deckId }?.let { onOpenDeck(it.deck) }
+                                        } catch (e: Exception) {
+                                            val cause = e.message?.take(220) ?: "Error desconocido"
+                                            importMessage = "Error importando baraja: $cause"
+                                            appendImportLog("Fallo importando baraja ${remote.id}: $cause")
+                                        } finally {
+                                            importLoading = false
+                                        }
                                     }
                                 },
                                 modifier = Modifier.fillMaxWidth(),

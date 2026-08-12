@@ -54,6 +54,7 @@ class MainActivity : ComponentActivity() {
             var ready by remember { mutableStateOf(false) }
             var deckStatsRefresh by remember { mutableIntStateOf(0) }
             var homeRefresh by remember { mutableIntStateOf(0) }
+            var statsDeckScopeId by remember { mutableStateOf<Long?>(null) }
             val scope = rememberCoroutineScope()
             val nav = rememberNavController()
             val backStack by nav.currentBackStackEntryAsState()
@@ -83,6 +84,17 @@ class MainActivity : ComponentActivity() {
                                         nav.popBackStack(Routes.DeckList.route, inclusive = false)
                                         homeRefresh += 1
                                     } else {
+                                        if (tab == MainTab.Stats) {
+                                            statsDeckScopeId = if (onDeckDetail) {
+                                                currentRoute
+                                                    ?.removePrefix("deck/")
+                                                    ?.toLongOrNull()
+                                            } else {
+                                                null
+                                            }
+                                        } else if (tab != MainTab.Home) {
+                                            statsDeckScopeId = null
+                                        }
                                         nav.navigate(tab.route) {
                                             popUpTo(nav.graph.findStartDestination().id) {
                                                 saveState = true
@@ -138,7 +150,10 @@ class MainActivity : ComponentActivity() {
                         }
 
                         composable(Routes.Stats.route) {
-                            StatsScreen(repo = repo)
+                            StatsScreen(
+                                repo = repo,
+                                deckId = statsDeckScopeId,
+                            )
                         }
 
                         composable(Routes.Search.route) {

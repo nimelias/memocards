@@ -53,6 +53,7 @@ private val RATING_EASY = Color(0xFF2563EB)
 @Composable
 fun StatsScreen(
     repo: MemoRepository,
+    deckId: Long? = null,
 ) {
     val palette = LocalMemoPalette.current
     val scope = rememberCoroutineScope()
@@ -62,12 +63,14 @@ fun StatsScreen(
             ActivityStats(0, 0L, 0, 0, 0, emptyList()),
         )
     }
+    var deckName by remember { mutableStateOf<String?>(null) }
 
     suspend fun reload() {
-        stats = repo.getActivityStats()
+        stats = repo.getActivityStats(deckId = deckId)
+        deckName = deckId?.let { repo.getDeck(it)?.name }
     }
 
-    LaunchedEffect(Unit) { reload() }
+    LaunchedEffect(deckId) { reload() }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME || event == Lifecycle.Event.ON_START) {
@@ -91,6 +94,11 @@ fun StatsScreen(
             fontSize = scaledSp(24f),
             fontWeight = FontWeight.Bold,
             color = palette.text,
+        )
+        Text(
+            if (deckId != null) "Tipo: Mazo · ${deckName ?: "Mazo #$deckId"}" else "Tipo: Totales globales",
+            color = palette.muted,
+            fontSize = scaledSp(12f),
         )
         Spacer(Modifier.height(10.dp))
 

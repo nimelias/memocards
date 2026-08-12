@@ -327,6 +327,42 @@ interface MemoDao {
 
     @Query(
         """
+        SELECT r.reviewed_at, r.elapsed_ms, r.rating
+        FROM review_log r
+        JOIN cards c ON c.id = r.card_id
+        JOIN notes n ON n.id = c.note_id
+        WHERE n.deck_id = :deckId
+          AND r.reviewed_at >= :since
+        ORDER BY r.reviewed_at ASC
+        """,
+    )
+    suspend fun listReviewsSinceForDeck(deckId: Long, since: Long): List<ReviewStamp>
+
+    @Query(
+        """
+        SELECT r.reviewed_at, r.elapsed_ms, r.rating
+        FROM review_log r
+        JOIN cards c ON c.id = r.card_id
+        JOIN notes n ON n.id = c.note_id
+        WHERE n.deck_id = :deckId
+        ORDER BY r.reviewed_at ASC
+        """,
+    )
+    suspend fun listAllReviewsForDeck(deckId: Long): List<ReviewStamp>
+
+    @Query(
+        """
+        SELECT c.queue AS queue, COUNT(*) AS count
+        FROM cards c
+        JOIN notes n ON n.id = c.note_id
+        WHERE n.deck_id = :deckId
+        GROUP BY c.queue
+        """,
+    )
+    suspend fun queueCountsForDeck(deckId: Long): List<QueueCount>
+
+    @Query(
+        """
         SELECT COUNT(*) FROM review_log r
         JOIN cards c ON c.id = r.card_id
         JOIN notes n ON n.id = c.note_id

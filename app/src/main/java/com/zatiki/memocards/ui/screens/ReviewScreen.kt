@@ -4,6 +4,7 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -451,8 +452,16 @@ private fun RatingArcMenu(
         initialValue = 0.12f,
         targetValue = 0.42f,
         animationSpec = infiniteRepeatable(
-            animation = tween(700),
-            repeatMode = RepeatMode.Reverse,
+            animation = keyframes {
+                durationMillis = 1900
+                0.42f at 220
+                0.12f at 430
+                0.12f at 1100
+                0.42f at 1320
+                0.12f at 1540
+                0.12f at 1900
+            },
+            repeatMode = RepeatMode.Restart,
         ),
         label = "sideHintAlpha",
     )

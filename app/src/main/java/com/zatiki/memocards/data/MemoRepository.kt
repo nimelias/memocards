@@ -272,12 +272,16 @@ class MemoRepository(private val dao: MemoDao) {
         }
     }
 
-    suspend fun getActivityStats(heatmapBuckets: Int = 35): ActivityStats {
+    suspend fun getActivityStats(heatmapBuckets: Int = 35, deckId: Long? = null): ActivityStats {
         val ts = System.currentTimeMillis()
         val dayStart = StudyPeriod.startOfDay(ts)
         val endOfDay = dayStart + MS_PER_DAY - 1
         val since = dayStart - (heatmapBuckets - 1L) * MS_PER_DAY
-        val stamps = dao.listReviewsSince(since)
+        val stamps = if (deckId != null) {
+            dao.listReviewsSinceForDeck(deckId, since)
+        } else {
+            dao.listReviewsSince(since)
+        }
 
         var cardsToday = 0
         var elapsedToday = 0L
@@ -298,7 +302,7 @@ class MemoRepository(private val dao: MemoDao) {
             }
         }
 
-        val allStamps = dao.listReviewsSince(0L)
+        val allStamps = if (deckId != null) dao.listAllReviewsForDeck(deckId) else dao.listReviewsSince(0L)
         val windowEnd = ts
         val windowStart = if (allStamps.isEmpty()) {
             dayStart - (heatmapBuckets - 1L) * MS_PER_DAY
@@ -345,7 +349,8 @@ class MemoRepository(private val dao: MemoDao) {
         var newCount = 0
         var learningCount = 0
         var reviewCount = 0
-        for (row in dao.queueCounts()) {
+        val queueRows = if (deckId != null) dao.queueCountsForDeck(deckId) else dao.queueCounts()
+        for (row in queueRows) {
             when (row.queue) {
                 "new" -> newCount = row.count
                 "learning" -> learningCount = row.count
@@ -549,7 +554,7 @@ class MemoRepository(private val dao: MemoDao) {
         val lineHeight = map["ui.lineHeight"]?.toFloatOrNull()?.coerceIn(1.15f, 2.0f) ?: 1.45f
         val ratingLayout = RatingLayout.from(map["ui.ratingLayout"])
         val arcLabelMode = ArcLabelMode.from(map["ui.arcLabelMode"])
-        val glowIntensity = map["ui.glowIntensity"]?.toFloatOrNull()?.coerceIn(0f, 1.5f) ?: 1f
+        val glowIntensity = map["ui.glowIntensity"]?.toFloatOrNull()?.coerceIn(0f, 2.0f) ?: 1f
         return UiSettings(
             theme = theme,
             fontScale = font,
