@@ -22,6 +22,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -31,9 +32,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.zatiki.memocards.data.CrashLog
 import com.zatiki.memocards.data.MemoRepository
+import com.zatiki.memocards.data.toUserCause
 import com.zatiki.memocards.domain.ArcLabelMode
 import com.zatiki.memocards.domain.EstudiaProject
 import com.zatiki.memocards.domain.RatingLayout
@@ -59,6 +65,8 @@ fun SettingsScreen(
 ) {
     val palette = LocalMemoPalette.current
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
     var syncSettings by remember { mutableStateOf(SyncSettings()) }
     var projects by remember { mutableStateOf<List<EstudiaProject>>(emptyList()) }
     var syncMessage by remember { mutableStateOf<String?>(null) }
@@ -180,7 +188,7 @@ fun SettingsScreen(
 
         Spacer(Modifier.height(24.dp))
         Text(
-            "Intensidad de degradados (${"%.0f".format(settings.glowIntensity * 100)}%)",
+            "Intensidad de degradados (${"%.1f".format(settings.glowIntensity)}×, 0–2)",
             fontWeight = FontWeight.SemiBold,
             color = palette.text,
             fontSize = scaledSp(15f),
@@ -314,8 +322,17 @@ fun SettingsScreen(
             Button(
                 onClick = {
                     scope.launch {
-                        projects = repo.listEstudiaProjects(syncSettings)
-                        syncMessage = if (projects.isEmpty()) "Sin proyectos" else "${projects.size} proyectos"
+                        try {
+                            projects = repo.listEstudiaProjects(syncSettings)
+                            syncMessage = if (projects.isEmpty()) {
+                                "Sin proyectos (¿URL, X-KEY o permisos?)"
+                            } else {
+                                "${projects.size} proyectos"
+                            }
+                        } catch (e: Exception) {
+                            projects = emptyList()
+                            syncMessage = "No se pudieron cargar proyectos: ${e.toUserCause()}"
+                        }
                     }
                 },
                 modifier = Modifier.weight(1f),
@@ -370,6 +387,25 @@ fun SettingsScreen(
         syncMessage?.let {
             Spacer(Modifier.height(8.dp))
             Text(it, color = palette.muted, fontSize = scaledSp(12f))
+        }
+
+        CrashLog.read(context)?.let { crash ->
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "Último fallo (para soporte)",
+                fontWeight = FontWeight.SemiBold,
+                color = palette.text,
+                fontSize = scaledSp(15f),
+            )
+            Text(crash.take(400), color = palette.muted, fontSize = scaledSp(11f))
+            TextButton(
+                onClick = {
+                    clipboard.setText(AnnotatedString(crash))
+                    syncMessage = "Log de fallo copiado al portapapeles"
+                },
+            ) {
+                Text("Copiar último fallo")
+            }
         }
 
         Spacer(Modifier.height(24.dp))

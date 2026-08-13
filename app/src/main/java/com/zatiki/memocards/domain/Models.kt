@@ -84,6 +84,7 @@ data class DeckBucketStats(
     val newCount: Int,
     val learningCount: Int,
     val reviewDueCount: Int,
+    val studiedToday: Int = 0,
 ) {
     val leftToStudy: Int get() = newCount + learningCount + reviewDueCount
 
@@ -150,7 +151,7 @@ data class UiSettings(
     val lineHeight: Float = 1.45f,
     val ratingLayout: RatingLayout = RatingLayout.ARC_RIGHT,
     val arcLabelMode: ArcLabelMode = ArcLabelMode.ICONS,
-    /** Intensidad de los degradados de fondo (0 = apagado, 1 = normal). */
+    /** Intensidad de los degradados de fondo (0 = apagado, 1 = normal, 2 = máximo). */
     val glowIntensity: Float = 1f,
 )
 

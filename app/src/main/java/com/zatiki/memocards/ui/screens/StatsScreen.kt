@@ -127,7 +127,7 @@ fun StatsScreen(
             }
 
             Text(
-                "Hoy por hora (color = feedback)",
+                "Hoy por hora (colores por tipo de feedback)",
                 color = palette.muted,
                 fontSize = scaledSp(12f),
             )
@@ -202,15 +202,13 @@ private fun HourlyChart(hours: List<HourActivity>) {
         ) {
             hours.forEach { hour ->
                 val ratio = hour.reviewCount.toFloat() / max
-                Box(
-                    Modifier
+                FeedbackStack(
+                    ratingBuckets = hour.ratingBuckets,
+                    emptyColor = palette.border,
+                    modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight(ratio.coerceAtLeast(0.04f))
-                        .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp))
-                        .background(
-                            if (hour.reviewCount == 0) palette.border
-                            else feedbackColor(hour.ratingBuckets, hour.reviewCount),
-                        ),
+                        .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp)),
                 )
             }
         }
@@ -246,26 +244,22 @@ private fun HeatmapGrid(days: List<DayActivity>) {
             ) {
                 row.forEach { day ->
                     val count = day.reviewCount
-                    val base = when {
-                        count == 0 -> palette.border
-                        else ->
-                            feedbackColor(
-                                day.ratingBuckets,
-                                count,
-                                intensity = (count.toFloat() / max).coerceIn(0.35f, 1f),
-                            )
-                    }
+                    val intensity = (count.toFloat() / max).coerceIn(0.45f, 1f)
                     Box(
                         Modifier
                             .weight(1f)
                             .aspectRatio(1f)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(base),
-                        contentAlignment = Alignment.Center,
+                            .clip(RoundedCornerShape(6.dp)),
                     ) {
+                        FeedbackStack(
+                            ratingBuckets = day.ratingBuckets,
+                            emptyColor = palette.border,
+                            intensity = if (count == 0) 1f else intensity,
+                            horizontal = true,
+                            modifier = Modifier.fillMaxSize(),
+                        )
                         val isLatest = day == days.last()
                         if (isLatest && count > 0) {
-                            // Marca en último bucket para ubicar el "ahora" en modo adaptable.
                             Box(
                                 Modifier
                                     .align(Alignment.BottomCenter)
@@ -293,33 +287,52 @@ private fun HeatmapGrid(days: List<DayActivity>) {
     }
 }
 
-private fun feedbackColor(ratingBuckets: List<Int>, count: Int, intensity: Float = 1f): Color {
-    if (count <= 0 || ratingBuckets.isEmpty()) return Color(0xFF94A3B8)
-    val buckets = IntArray(4)
+private val RATING_COLORS = listOf(RATING_AGAIN, RATING_HARD, RATING_GOOD, RATING_EASY)
+
+@Composable
+private fun FeedbackStack(
+    ratingBuckets: List<Int>,
+    emptyColor: Color,
+    modifier: Modifier = Modifier,
+    intensity: Float = 1f,
+    horizontal: Boolean = false,
+) {
+    val amounts = IntArray(4)
+    var total = 0
     for (i in 0 until minOf(4, ratingBuckets.size)) {
-        buckets[i] = ratingBuckets[i].coerceAtLeast(0)
+        amounts[i] = ratingBuckets[i].coerceAtLeast(0)
+        total += amounts[i]
     }
-    val total = buckets.sum().coerceAtLeast(1)
-    val r = (
-        RATING_AGAIN.red * buckets[0] +
-            RATING_HARD.red * buckets[1] +
-            RATING_GOOD.red * buckets[2] +
-            RATING_EASY.red * buckets[3]
-        ) / total.toFloat()
-    val g = (
-        RATING_AGAIN.green * buckets[0] +
-            RATING_HARD.green * buckets[1] +
-            RATING_GOOD.green * buckets[2] +
-            RATING_EASY.green * buckets[3]
-        ) / total.toFloat()
-    val b = (
-        RATING_AGAIN.blue * buckets[0] +
-            RATING_HARD.blue * buckets[1] +
-            RATING_GOOD.blue * buckets[2] +
-            RATING_EASY.blue * buckets[3]
-        ) / total.toFloat()
-    val base = Color(r, g, b, alpha = 1f)
-    return base.copy(alpha = (0.45f + 0.55f * intensity).coerceIn(0.35f, 1f))
+    if (total <= 0) {
+        Box(modifier.background(emptyColor))
+        return
+    }
+    val alpha = intensity.coerceIn(0.35f, 1f)
+    if (horizontal) {
+        Row(modifier) {
+            for (i in 0 until 4) {
+                if (amounts[i] <= 0) continue
+                Box(
+                    Modifier
+                        .weight(amounts[i].toFloat())
+                        .fillMaxHeight()
+                        .background(RATING_COLORS[i].copy(alpha = alpha)),
+                )
+            }
+        }
+    } else {
+        Column(modifier) {
+            for (i in 0 until 4) {
+                if (amounts[i] <= 0) continue
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .weight(amounts[i].toFloat())
+                        .background(RATING_COLORS[i].copy(alpha = alpha)),
+                )
+            }
+        }
+    }
 }
 
 private fun heatmapGranularityLabel(stats: ActivityStats): String {
@@ -343,5 +356,5 @@ private fun formatDuration(ms: Long): String {
 
 private fun heatmapTitle(stats: ActivityStats): String {
     val granularity = heatmapGranularityLabel(stats)
-    return "Actividad adaptable · ${stats.heatmap.size} bloques de $granularity · color por feedback"
+    return "Actividad adaptable · ${stats.heatmap.size} bloques de $granularity · franjas por feedback"
 }

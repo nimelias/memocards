@@ -33,6 +33,16 @@ class EstudiaApi(
         }
     }
 
+    suspend fun probeHealth(): String = withContext(Dispatchers.IO) {
+        val body = getJson("/api/health")
+        if (body.optBoolean("ok", false)) {
+            "Conexión correcta"
+        } else {
+            val snippet = body.toString().take(120)
+            "El servidor respondió pero health.ok no es true ($snippet)"
+        }
+    }
+
     suspend fun listProjects(): List<EstudiaProject> = withContext(Dispatchers.IO) {
         val body = getJson("/api/projects")
         val arr = body.optJSONArray("projects") ?: JSONArray()
@@ -72,20 +82,31 @@ class EstudiaApi(
             val body = getJson("/api/decks/$remoteDeckId")
             val title = body.optString("title", "Baraja estudIA")
             val arr = body.optJSONArray("cards") ?: JSONArray()
+            val parseErrors = mutableListOf<String>()
             val cards = buildList {
                 for (i in 0 until arr.length()) {
-                    val o = arr.getJSONObject(i)
-                    add(
-                        EstudiaRemoteCard(
-                            id = o.getLong("id"),
-                            front = o.optString("front", ""),
-                            back = o.optString("back", ""),
-                            updatedAt = o.optLong("updatedAt", 0L),
-                        ),
-                    )
+                    try {
+                        val o = arr.getJSONObject(i)
+                        add(
+                            EstudiaRemoteCard(
+                                id = o.getLong("id"),
+                                front = o.optString("front", ""),
+                                back = o.optString("back", ""),
+                                updatedAt = o.optLong("updatedAt", 0L),
+                            ),
+                        )
+                    } catch (e: Exception) {
+                        parseErrors += "idx=$i ${e.toUserCause(80)}"
+                    }
                 }
             }
-            title to cards.filter { it.front.isNotBlank() }
+            val valid = cards.filter { it.front.isNotBlank() }
+            if (valid.isEmpty() && arr.length() > 0) {
+                throw EstudiaApiException(
+                    "Ninguna carta válida en baraja $remoteDeckId. ${parseErrors.take(4).joinToString("; ")}",
+                )
+            }
+            title to valid
         }
 
     /**
@@ -128,8 +149,8 @@ class EstudiaApi(
                 markdown = appendHighlightsMarkdown(markdown, highlights)
             }
             if (markdown.isBlank()) null else title to markdown
-        } catch (_: Exception) {
-            null
+        } catch (e: Exception) {
+            throw EstudiaApiException("Libro $remoteBookId: ${e.toUserCause()}")
         }
     }
 
@@ -217,7 +238,9 @@ class EstudiaApi(
         client.newCall(request).execute().use { response ->
             val text = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
-                throw EstudiaApiException("HTTP ${response.code}: $text")
+                throw EstudiaApiException(
+                    "HTTP ${response.code} GET ${normalizeUrl(path)}: ${text.take(400)}",
+                )
             }
             return JSONObject(text)
         }
@@ -232,7 +255,9 @@ class EstudiaApi(
         client.newCall(request).execute().use { response ->
             val text = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
-                throw EstudiaApiException("HTTP ${response.code}: $text")
+                throw EstudiaApiException(
+                    "HTTP ${response.code} GET ${normalizeUrl(path)}: ${text.take(400)}",
+                )
             }
             return text
         }
@@ -247,7 +272,9 @@ class EstudiaApi(
         client.newCall(request).execute().use { response ->
             val text = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
-                throw EstudiaApiException("HTTP ${response.code}: $text")
+                throw EstudiaApiException(
+                    "HTTP ${response.code} POST ${normalizeUrl(path)}: ${text.take(400)}",
+                )
             }
             return if (text.isBlank()) JSONObject() else JSONObject(text)
         }
@@ -261,3 +288,27 @@ class EstudiaApi(
 }
 
 class EstudiaApiException(message: String) : Exception(message)
+
+fun Throwable.toUserCause(maxLen: Int = 220): String {
+    val chain = generateSequence(this as Throwable?) { it.cause }
+        .map { err ->
+            val msg = err.message?.trim().orEmpty()
+            if (msg.isNotEmpty()) msg else err.javaClass.simpleName
+        }
+        .filter { it.isNotBlank() }
+        .distinct()
+        .take(3)
+        .joinToString(" → ")
+    return chain.ifBlank { "Error desconocido" }.take(maxLen)
+}
+
+fun Throwable.toPostmortem(): String {
+    val stack = stackTraceToString().lineSequence().take(20).joinToString("\n")
+    return buildString {
+        appendLine("type=${javaClass.name}")
+        appendLine("message=${message ?: "(sin mensaje)"}")
+        cause?.let { appendLine("cause=${it.javaClass.name}: ${it.message}") }
+        appendLine("thread=${Thread.currentThread().name}")
+        append(stack)
+    }.trim()
+}

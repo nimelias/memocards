@@ -7,6 +7,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -165,6 +166,20 @@ fun ReviewScreen(
         }
     }
 
+    fun finishAndLeave() {
+        scope.launch {
+            var waited = 0
+            while (pendingReviews > 0 && waited < 1000) {
+                delay(20)
+                waited += 20
+            }
+            onSessionEnd()
+            onDone()
+        }
+    }
+
+    BackHandler { finishAndLeave() }
+
     val current = queue.getOrNull(index)
 
     fun revealBack() {
@@ -236,7 +251,7 @@ fun ReviewScreen(
                             }
                             Spacer(Modifier.height(10.dp))
                             Button(
-                                onClick = onDone,
+                                onClick = { finishAndLeave() },
                                 colors = ButtonDefaults.buttonColors(containerColor = palette.surface),
                             ) {
                                 Text("Volver al mazo", color = palette.text)
@@ -449,17 +464,16 @@ private fun RatingArcMenu(
 
     val hintTransition = rememberInfiniteTransition(label = "sideHint")
     val hintPulseRaw by hintTransition.animateFloat(
-        initialValue = 0.12f,
-        targetValue = 0.42f,
+        initialValue = 0f,
+        targetValue = 0.50f,
         animationSpec = infiniteRepeatable(
             animation = keyframes {
-                durationMillis = 1900
-                0.42f at 220
-                0.12f at 430
-                0.12f at 1100
-                0.42f at 1320
-                0.12f at 1540
-                0.12f at 1900
+                // Encendido 1s, apagado total 2.5s, y se repite.
+                durationMillis = 3500
+                0.50f at 0
+                0.50f at 1000
+                0.00f at 1020
+                0.00f at 3500
             },
             repeatMode = RepeatMode.Restart,
         ),

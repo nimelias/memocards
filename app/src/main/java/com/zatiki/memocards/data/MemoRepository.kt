@@ -37,6 +37,8 @@ import java.util.Calendar
 class MemoRepository(private val dao: MemoDao) {
 
     private val fsrs = FsrsScheduler()
+    var lastImportWarnings: String = ""
+        private set
 
     private fun estudiaApi(settings: SyncSettings): EstudiaApi? {
         if (settings.baseUrl.isBlank() || settings.apiKey.isBlank()) return null
@@ -213,7 +215,8 @@ class MemoRepository(private val dao: MemoDao) {
 
     suspend fun getDeckBucketStats(deckId: Long): DeckBucketStats {
         val ts = System.currentTimeMillis()
-        val endOfDay = StudyPeriod.startOfDay(ts) + MS_PER_DAY - 1
+        val dayStart = StudyPeriod.startOfDay(ts)
+        val endOfDay = dayStart + MS_PER_DAY - 1
         var total = 0
         var newCount = 0
         var learningCount = 0
@@ -222,7 +225,7 @@ class MemoRepository(private val dao: MemoDao) {
             total += row.count
             when (row.queue) {
                 "new" -> newCount += row.count
-                "learning" -> if (row.due <= endOfDay) learningCount += row.count
+                "learning" -> learningCount += row.count
                 "review" -> if (row.due <= endOfDay) reviewDueCount += row.count
             }
         }
@@ -231,6 +234,7 @@ class MemoRepository(private val dao: MemoDao) {
             newCount = newCount,
             learningCount = learningCount,
             reviewDueCount = reviewDueCount,
+            studiedToday = dao.countReviewsBetweenForDeck(deckId, dayStart, endOfDay),
         )
     }
 
@@ -616,18 +620,14 @@ class MemoRepository(private val dao: MemoDao) {
     suspend fun testEstudiaConnectionMessage(settings: SyncSettings): String {
         val api = estudiaApi(settings) ?: return "Configura URL y X-KEY"
         return try {
-            if (api.health()) {
-                "Conexión correcta"
-            } else {
-                "Sin respuesta saludable del servidor"
-            }
+            api.probeHealth()
         } catch (e: Exception) {
-            e.message?.take(220)?.ifBlank { "Error desconocido" } ?: "Error desconocido"
+            e.toUserCause()
         }
     }
 
     suspend fun listEstudiaProjects(settings: SyncSettings): List<EstudiaProject> {
-        val api = estudiaApi(settings) ?: return emptyList()
+        val api = estudiaApi(settings) ?: throw IllegalStateException("Configura URL y X-KEY")
         return api.listProjects()
     }
 
@@ -710,38 +710,54 @@ class MemoRepository(private val dao: MemoDao) {
             )
         }
         var updated = 0
+        val failures = mutableListOf<String>()
         for (remote in remoteCards) {
-            val fields = NoteFields(front = remote.front, back = remote.back)
-            val localCard = dao.getCardByRemoteId(remote.id)
-            if (localCard != null) {
-                val note = dao.getNote(localCard.noteId) ?: continue
-                dao.updateNote(
-                    note.copy(
-                        fieldsJson = fieldsToJson(fields),
-                        updatedAt = ts,
-                    ),
-                )
-                updated += 1
-            } else {
-                val noteId = dao.insertNote(
-                    NoteEntity(
-                        deckId = deckId,
-                        fieldsJson = fieldsToJson(fields),
-                        createdAt = ts,
-                        updatedAt = ts,
-                    ),
-                )
-                dao.insertCard(
-                    CardEntity(
-                        noteId = noteId,
-                        due = ts,
-                        remoteCardId = remote.id,
-                        createdAt = ts,
-                        updatedAt = ts,
-                    ),
-                )
-                updated += 1
+            try {
+                val fields = NoteFields(front = remote.front, back = remote.back)
+                val localCard = dao.getCardByRemoteId(remote.id)
+                if (localCard != null) {
+                    val note = dao.getNote(localCard.noteId) ?: continue
+                    dao.updateNote(
+                        note.copy(
+                            fieldsJson = fieldsToJson(fields),
+                            updatedAt = ts,
+                        ),
+                    )
+                    updated += 1
+                } else {
+                    val noteId = dao.insertNote(
+                        NoteEntity(
+                            deckId = deckId,
+                            fieldsJson = fieldsToJson(fields),
+                            createdAt = ts,
+                            updatedAt = ts,
+                        ),
+                    )
+                    dao.insertCard(
+                        CardEntity(
+                            noteId = noteId,
+                            due = ts,
+                            remoteCardId = remote.id,
+                            createdAt = ts,
+                            updatedAt = ts,
+                        ),
+                    )
+                    updated += 1
+                }
+            } catch (e: Exception) {
+                failures += "carta ${remote.id}: ${e.toUserCause(80)}"
             }
+        }
+        if (updated == 0 && remoteCards.isNotEmpty()) {
+            lastImportWarnings = failures.joinToString(" | ")
+            throw EstudiaApiException(
+                "No se importó ninguna carta. ${failures.take(3).joinToString("; ")}",
+            )
+        }
+        lastImportWarnings = if (failures.isNotEmpty()) {
+            "Avisos (${failures.size}/${remoteCards.size}): ${failures.joinToString(" | ")}"
+        } else {
+            "cartas escritas=$updated de ${remoteCards.size}"
         }
         saveSyncSettings(getSyncSettings().copy(lastSyncAt = ts))
         return deckId

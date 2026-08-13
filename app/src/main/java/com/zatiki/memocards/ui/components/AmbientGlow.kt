@@ -15,7 +15,7 @@ import com.zatiki.memocards.ui.theme.LocalMemoPalette
 
 /**
  * Brillos degradados tipo Emich: orbes suaves detrás del contenido.
- * [intensity] 0 = sin glow, 1 = intensidad por defecto del tema.
+ * [intensity] 0 = sin glow, 1 = intensidad por defecto del tema, 2 = máximo.
  */
 @Composable
 fun AmbientGlowBackdrop(
@@ -26,7 +26,7 @@ fun AmbientGlowBackdrop(
 ) {
     val palette = LocalMemoPalette.current
     val strong = theme == ThemeName.EMICH || theme == ThemeName.DARK
-    val factor = intensity.coerceIn(0f, 1.5f)
+    val factor = intensity.coerceIn(0f, 2.0f)
     val a1 = (if (strong) 0.38f else 0.10f) * factor
     val a2 = (if (strong) 0.28f else 0.07f) * factor
     val a3 = (if (strong) 0.24f else 0.05f) * factor

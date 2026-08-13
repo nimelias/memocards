@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -59,8 +60,9 @@ class MainActivity : ComponentActivity() {
             val nav = rememberNavController()
             val backStack by nav.currentBackStackEntryAsState()
             val currentRoute = backStack?.destination?.route
+            val routeDeckId = backStack?.arguments?.getLong("deckId")?.takeIf { it > 0L }
             val showBottomBar = Routes.showsBottomBar(currentRoute)
-            val onDeckDetail = currentRoute?.startsWith("deck/") == true
+            val onDeckDetail = currentRoute?.startsWith("deck/") == true && routeDeckId != null
             val bottomBarRoute =
                 if (onDeckDetail) MainTab.Home.route else currentRoute
 
@@ -85,13 +87,7 @@ class MainActivity : ComponentActivity() {
                                         homeRefresh += 1
                                     } else {
                                         if (tab == MainTab.Stats) {
-                                            statsDeckScopeId = if (onDeckDetail) {
-                                                currentRoute
-                                                    ?.removePrefix("deck/")
-                                                    ?.toLongOrNull()
-                                            } else {
-                                                null
-                                            }
+                                            statsDeckScopeId = if (onDeckDetail) routeDeckId else null
                                         } else if (tab != MainTab.Home) {
                                             statsDeckScopeId = null
                                         }
@@ -150,10 +146,12 @@ class MainActivity : ComponentActivity() {
                         }
 
                         composable(Routes.Stats.route) {
-                            StatsScreen(
-                                repo = repo,
-                                deckId = statsDeckScopeId,
-                            )
+                            key(statsDeckScopeId) {
+                                StatsScreen(
+                                    repo = repo,
+                                    deckId = statsDeckScopeId,
+                                )
+                            }
                         }
 
                         composable(Routes.Search.route) {

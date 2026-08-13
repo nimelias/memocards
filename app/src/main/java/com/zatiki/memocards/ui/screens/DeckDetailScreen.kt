@@ -89,14 +89,18 @@ fun DeckDetailScreen(
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+            scope.launch { reload() }
+        }
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     val left = buckets.leftToStudy
-    val progress = if (buckets.total <= 0) {
+    val dailyTotal = (buckets.studiedToday + left).coerceAtLeast(0)
+    val progress = if (dailyTotal <= 0) {
         0f
     } else {
-        ((buckets.total - left).toFloat() / buckets.total).coerceIn(0f, 1f)
+        (buckets.studiedToday.toFloat() / dailyTotal).coerceIn(0f, 1f)
     }
     val clozeCount = notes.count { ClozeFormat.isCloze(it.fields.front) }
     val qaCount = notes.size - clozeCount
@@ -135,7 +139,7 @@ fun DeckDetailScreen(
                             .padding(16.dp),
                     ) {
                         Text(
-                            "${buckets.total - left}/${buckets.total} cartas al día",
+                            "${buckets.studiedToday} estudiadas hoy · $left pendientes",
                             color = palette.muted,
                             fontSize = scaledSp(13f),
                         )

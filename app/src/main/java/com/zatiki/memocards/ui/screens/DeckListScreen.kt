@@ -43,6 +43,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -50,7 +51,10 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.zatiki.memocards.data.CrashLog
 import com.zatiki.memocards.data.MemoRepository
+import com.zatiki.memocards.data.toPostmortem
+import com.zatiki.memocards.data.toUserCause
 import com.zatiki.memocards.domain.Book
 import com.zatiki.memocards.domain.Deck
 import com.zatiki.memocards.domain.DeckSummary
@@ -61,6 +65,9 @@ import com.zatiki.memocards.domain.UiSettings
 import com.zatiki.memocards.ui.components.AmbientGlowBackdrop
 import com.zatiki.memocards.ui.theme.LocalMemoPalette
 import com.zatiki.memocards.ui.theme.scaledSp
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.launch
 
 @Composable
@@ -85,10 +92,24 @@ fun DeckListScreen(
     var importLog by remember { mutableStateOf<List<String>>(emptyList()) }
     val lifecycleOwner = LocalLifecycleOwner.current
     val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
 
     fun appendImportLog(line: String) {
-        val ts = System.currentTimeMillis()
-        importLog = (importLog + "[$ts] $line").takeLast(120)
+        val ts = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
+        importLog = (importLog + "[$ts] $line").takeLast(200)
+    }
+
+    fun copyImportLog() {
+        val crash = CrashLog.read(context)
+        val body = buildString {
+            append(importLog.joinToString("\n"))
+            if (!crash.isNullOrBlank()) {
+                append("\n\n--- último fallo ---\n")
+                append(crash)
+            }
+        }
+        clipboard.setText(AnnotatedString(body.ifBlank { "(log vacío)" }))
+        importMessage = "Log copiado al portapapeles"
     }
 
     suspend fun reload() {
@@ -198,6 +219,9 @@ fun DeckListScreen(
                             appendImportLog("Inicio de carga de catálogo estudIA")
                             try {
                                 val sync = repo.getSyncSettings()
+                                appendImportLog(
+                                    "sync url=${sync.baseUrl} project=${sync.projectId} keyLen=${sync.apiKey.length}",
+                                )
                                 remoteDecks = repo.listEstudiaDecks(sync)
                                 remoteBooks = repo.listEstudiaBooks(sync)
                                 if (remoteDecks.isEmpty() && remoteBooks.isEmpty()) {
@@ -208,9 +232,10 @@ fun DeckListScreen(
                                     showImport = true
                                 }
                             } catch (e: Exception) {
-                                val cause = e.message?.take(220) ?: "Error desconocido"
+                                val cause = e.toUserCause()
                                 importMessage = "Error al cargar catálogo: $cause"
-                                appendImportLog("Error cargando catálogo: $cause")
+                                appendImportLog("Error cargando catálogo:\n${e.toPostmortem()}")
+                                CrashLog.record(context, e.toPostmortem())
                             } finally {
                                 importLoading = false
                             }
@@ -234,10 +259,7 @@ fun DeckListScreen(
                 }
                 if (importLog.isNotEmpty()) {
                     TextButton(
-                        onClick = {
-                            clipboard.setText(AnnotatedString(importLog.joinToString("\n")))
-                            importMessage = "Log copiado al portapapeles"
-                        },
+                        onClick = { copyImportLog() },
                         contentPadding = PaddingValues(0.dp),
                     ) {
                         Text("Copiar log de importación", color = palette.primary, fontSize = scaledSp(13f))
@@ -368,6 +390,17 @@ fun DeckListScreen(
             title = { Text("Importar desde estudIA") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    importMessage?.let { msg ->
+                        Text(msg, color = palette.muted, fontSize = scaledSp(12f))
+                    }
+                    if (importLog.isNotEmpty()) {
+                        TextButton(
+                            onClick = { copyImportLog() },
+                            contentPadding = PaddingValues(0.dp),
+                        ) {
+                            Text("Copiar log de importación", color = palette.primary, fontSize = scaledSp(13f))
+                        }
+                    }
                     if (remoteBooks.isNotEmpty()) {
                         Text("Libros", fontWeight = FontWeight.SemiBold)
                         remoteBooks.forEach { remote ->
@@ -383,9 +416,10 @@ fun DeckListScreen(
                                             reload()
                                             onOpenBook(bookId)
                                         } catch (e: Exception) {
-                                            val cause = e.message?.take(220) ?: "Error desconocido"
+                                            val cause = e.toUserCause()
                                             importMessage = "Error importando libro: $cause"
-                                            appendImportLog("Fallo importando libro ${remote.id}: $cause")
+                                            appendImportLog("Fallo importando libro ${remote.id}:\n${e.toPostmortem()}")
+                                            CrashLog.record(context, e.toPostmortem())
                                         } finally {
                                             importLoading = false
                                         }
@@ -408,14 +442,20 @@ fun DeckListScreen(
                                         appendImportLog("Importando baraja ${remote.id}: ${remote.title}")
                                         try {
                                             val deckId = repo.importEstudiaDeck(remote.id)
-                                            appendImportLog("Baraja importada OK idLocal=$deckId")
+                                            appendImportLog(
+                                                "Baraja importada OK idLocal=$deckId remote=${remote.id} cards=${remote.cardCount}",
+                                            )
+                                            repo.lastImportWarnings.takeIf { it.isNotBlank() }?.let {
+                                                appendImportLog(it)
+                                            }
                                             showImport = false
                                             reload()
                                             decks.find { it.deck.id == deckId }?.let { onOpenDeck(it.deck) }
                                         } catch (e: Exception) {
-                                            val cause = e.message?.take(220) ?: "Error desconocido"
+                                            val cause = e.toUserCause()
                                             importMessage = "Error importando baraja: $cause"
-                                            appendImportLog("Fallo importando baraja ${remote.id}: $cause")
+                                            appendImportLog("Fallo importando baraja ${remote.id}:\n${e.toPostmortem()}")
+                                            CrashLog.record(context, e.toPostmortem())
                                         } finally {
                                             importLoading = false
                                         }

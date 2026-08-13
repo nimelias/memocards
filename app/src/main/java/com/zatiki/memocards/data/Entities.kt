@@ -302,6 +302,17 @@ interface MemoDao {
 
     @Query(
         """
+        SELECT COUNT(*) FROM review_log r
+        JOIN cards c ON c.id = r.card_id
+        JOIN notes n ON n.id = c.note_id
+        WHERE n.deck_id = :deckId
+          AND r.reviewed_at >= :dayStart AND r.reviewed_at <= :dayEnd
+        """,
+    )
+    suspend fun countReviewsBetweenForDeck(deckId: Long, dayStart: Long, dayEnd: Long): Int
+
+    @Query(
+        """
         SELECT n.deck_id AS deckId, COUNT(c.id) AS count
         FROM cards c
         JOIN notes n ON n.id = c.note_id
