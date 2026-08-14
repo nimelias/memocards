@@ -264,6 +264,15 @@ interface MemoDao {
 
     @Query(
         """
+        UPDATE cards
+        SET queue = 'learning', phase = 1
+        WHERE queue = 'new' AND repetitions > 0
+        """,
+    )
+    suspend fun promoteReviewedNewCardsToLearning(): Int
+
+    @Query(
+        """
         DELETE FROM review_log
         WHERE card_id IN (
           SELECT c.id FROM cards c JOIN notes n ON n.id = c.note_id WHERE n.deck_id = :deckId

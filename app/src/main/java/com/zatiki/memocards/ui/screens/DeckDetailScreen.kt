@@ -27,6 +27,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -59,7 +60,6 @@ fun DeckDetailScreen(
     deckId: Long,
     deckName: String,
     settings: UiSettings,
-    refreshKey: Int = 0,
     onReview: (queueFilter: String) -> Unit,
     onPreviewReview: (advanceDays: Int) -> Unit,
     onAddNote: () -> Unit,
@@ -81,7 +81,8 @@ fun DeckDetailScreen(
         minRepText = (deck?.minRepetitions ?: 1).toString()
     }
 
-    LaunchedEffect(deckId, refreshKey) { reload() }
+    val dataVersion by repo.dataVersion.collectAsState()
+    LaunchedEffect(deckId, dataVersion) { reload() }
     DisposableEffect(lifecycleOwner, deckId) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME || event == Lifecycle.Event.ON_START) {
@@ -89,9 +90,6 @@ fun DeckDetailScreen(
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
-            scope.launch { reload() }
-        }
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 

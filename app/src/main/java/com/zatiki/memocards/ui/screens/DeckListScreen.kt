@@ -32,6 +32,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -74,7 +75,6 @@ import kotlinx.coroutines.launch
 fun DeckListScreen(
     repo: MemoRepository,
     settings: UiSettings,
-    refreshKey: Int = 0,
     onToggleTheme: () -> Unit,
     onOpenDeck: (Deck) -> Unit,
     onOpenBook: (Long) -> Unit,
@@ -118,14 +118,15 @@ fun DeckListScreen(
         homeStats = repo.getHomeStats()
     }
 
+    val dataVersion by repo.dataVersion.collectAsState()
     LaunchedEffect(Unit) {
         repo.ensureDemoDeckIfNeeded()
         reload()
         repo.syncEstudiaIfDue()
         reload()
     }
-    LaunchedEffect(refreshKey) {
-        if (refreshKey > 0) reload()
+    LaunchedEffect(dataVersion) {
+        if (dataVersion > 0) reload()
     }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->

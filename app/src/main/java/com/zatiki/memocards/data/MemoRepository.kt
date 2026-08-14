@@ -31,6 +31,10 @@ import com.zatiki.memocards.domain.SyncResult
 import com.zatiki.memocards.domain.SyncSettings
 import com.zatiki.memocards.domain.ThemeName
 import com.zatiki.memocards.domain.UiSettings
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import org.json.JSONObject
 import java.util.Calendar
 
@@ -39,6 +43,13 @@ class MemoRepository(private val dao: MemoDao) {
     private val fsrs = FsrsScheduler()
     var lastImportWarnings: String = ""
         private set
+
+    private val _dataVersion = MutableStateFlow(0)
+    val dataVersion: StateFlow<Int> = _dataVersion.asStateFlow()
+
+    private fun notifyDataChanged() {
+        _dataVersion.update { it + 1 }
+    }
 
     private fun estudiaApi(settings: SyncSettings): EstudiaApi? {
         if (settings.baseUrl.isBlank() || settings.apiKey.isBlank()) return null
@@ -142,6 +153,7 @@ class MemoRepository(private val dao: MemoDao) {
         val id = dao.insertDeck(
             DeckEntity(name = name.trim(), createdAt = ts, updatedAt = ts),
         )
+        notifyDataChanged()
         return Deck(id = id, name = name.trim(), createdAt = ts, updatedAt = ts)
     }
 
@@ -168,10 +180,11 @@ class MemoRepository(private val dao: MemoDao) {
         val ts = System.currentTimeMillis()
         dao.resetDeckCards(deckId, ts, ts)
         dao.clearDeckReviewLog(deckId)
-        val deck = dao.getDeck(deckId) ?: return
-        if (deck.studyDays != null) {
+        val deck = dao.getDeck(deckId)
+        if (deck != null && deck.studyDays != null) {
             dao.updateDeck(deck.copy(studyStartAt = ts, updatedAt = ts))
         }
+        notifyDataChanged()
     }
 
     suspend fun listNotes(deckId: Long): List<Note> = dao.listNotes(deckId).map { it.toDomain() }
@@ -194,6 +207,7 @@ class MemoRepository(private val dao: MemoDao) {
                 updatedAt = ts,
             ),
         )
+        notifyDataChanged()
         return Note(id = noteId, deckId = deckId, fields = fields, createdAt = ts, updatedAt = ts)
     }
 
@@ -214,6 +228,7 @@ class MemoRepository(private val dao: MemoDao) {
     }
 
     suspend fun getDeckBucketStats(deckId: Long): DeckBucketStats {
+        dao.promoteReviewedNewCardsToLearning()
         val ts = System.currentTimeMillis()
         val dayStart = StudyPeriod.startOfDay(ts)
         val endOfDay = dayStart + MS_PER_DAY - 1
@@ -240,6 +255,7 @@ class MemoRepository(private val dao: MemoDao) {
 
     /** Stats del home: reseñas de hoy + cartas pendientes (new + due). */
     suspend fun getHomeStats(): HomeStats {
+        dao.promoteReviewedNewCardsToLearning()
         val ts = System.currentTimeMillis()
         val dayStart = StudyPeriod.startOfDay(ts)
         val endOfDay = dayStart + MS_PER_DAY - 1
@@ -277,6 +293,7 @@ class MemoRepository(private val dao: MemoDao) {
     }
 
     suspend fun getActivityStats(heatmapBuckets: Int = 35, deckId: Long? = null): ActivityStats {
+        dao.promoteReviewedNewCardsToLearning()
         val ts = System.currentTimeMillis()
         val dayStart = StudyPeriod.startOfDay(ts)
         val endOfDay = dayStart + MS_PER_DAY - 1
@@ -479,6 +496,7 @@ class MemoRepository(private val dao: MemoDao) {
                 reviewedAt = ts,
             ),
         )
+        notifyDataChanged()
         val fsrsSnapshot = CardFsrsSnapshot(
             due = cappedDue,
             stability = result.stability,
@@ -659,16 +677,19 @@ class MemoRepository(private val dao: MemoDao) {
 
     suspend fun upsertLocalBook(title: String, markdown: String, remoteBookId: Long? = null, source: String? = null): Long {
         val ts = System.currentTimeMillis()
-        if (remoteBookId != null) {
+        val id = if (remoteBookId != null) {
             val existing = dao.getBookByRemoteId(remoteBookId)
             if (existing != null) {
                 dao.updateBook(
                     existing.copy(title = title, markdown = markdown, updatedAt = ts, source = source ?: existing.source),
                 )
-                return existing.id
+                existing.id
+            } else {
+                null
             }
-        }
-        return dao.insertBook(
+        } else {
+            null
+        } ?: dao.insertBook(
             BookEntity(
                 title = title,
                 markdown = markdown,
@@ -678,6 +699,8 @@ class MemoRepository(private val dao: MemoDao) {
                 updatedAt = ts,
             ),
         )
+        notifyDataChanged()
+        return id
     }
 
     suspend fun importEstudiaBook(remoteBookId: Long): Long {
@@ -760,6 +783,7 @@ class MemoRepository(private val dao: MemoDao) {
             "cartas escritas=$updated de ${remoteCards.size}"
         }
         saveSyncSettings(getSyncSettings().copy(lastSyncAt = ts))
+        notifyDataChanged()
         return deckId
     }
 
@@ -854,6 +878,7 @@ class MemoRepository(private val dao: MemoDao) {
         dao.upsertSetting(
             AppSettingEntity(DEMO_TRIVIAL_VERSION_KEY, DEMO_CONTENT_VERSION.toString()),
         )
+        notifyDataChanged()
     }
 
     private suspend fun ensureDemoBookIfNeeded() {

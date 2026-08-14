@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -70,7 +71,8 @@ fun StatsScreen(
         deckName = deckId?.let { repo.getDeck(it)?.name }
     }
 
-    LaunchedEffect(deckId) { reload() }
+    val dataVersion by repo.dataVersion.collectAsState()
+    LaunchedEffect(deckId, dataVersion) { reload() }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME || event == Lifecycle.Event.ON_START) {

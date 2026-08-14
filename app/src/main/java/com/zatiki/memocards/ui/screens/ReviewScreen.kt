@@ -1,11 +1,6 @@
 package com.zatiki.memocards.ui.screens
 
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.keyframes
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
@@ -41,7 +36,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -78,9 +72,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.zatiki.memocards.data.MemoRepository
 import com.zatiki.memocards.domain.ArcLabelMode
 import com.zatiki.memocards.domain.CardWithNote
@@ -137,10 +128,10 @@ fun ReviewScreen(
     var sessionKey by remember { mutableIntStateOf(0) }
     var pendingReviews by remember { mutableIntStateOf(0) }
     var deckReviewCount by remember { mutableIntStateOf(0) }
-    val lifecycleOwner = LocalLifecycleOwner.current
 
     suspend fun loadQueue() {
-        loading = true
+        val keepCardVisible = queue.isNotEmpty() && !finished
+        if (!keepCardVisible) loading = true
         queue = repo.getDueCards(deckId, 50, advanceDays, queueFilter)
         deckReviewCount = repo.countDeckReviews(deckId)
         index = 0
@@ -152,18 +143,6 @@ fun ReviewScreen(
 
     LaunchedEffect(deckId, advanceDays, queueFilter, sessionKey) {
         loadQueue()
-    }
-    DisposableEffect(lifecycleOwner, deckId, advanceDays, queueFilter) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                scope.launch { loadQueue() }
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            onSessionEnd()
-        }
     }
 
     fun finishAndLeave() {
@@ -226,7 +205,7 @@ fun ReviewScreen(
                     .padding(horizontal = 14.dp, vertical = 2.dp),
             ) {
                 when {
-                    loading -> Text("Cargando tarjetas…", color = palette.muted)
+                    loading -> Spacer(Modifier.weight(1f))
                     finished || current == null -> {
                         Column(
                             Modifier.fillMaxSize(),
@@ -462,24 +441,17 @@ private fun RatingArcMenu(
         if (interactive && !expanded) showSideHint = true
     }
 
-    val hintTransition = rememberInfiniteTransition(label = "sideHint")
-    val hintPulseRaw by hintTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 0.50f,
-        animationSpec = infiniteRepeatable(
-            animation = keyframes {
-                // Encendido 1s, apagado total 2.5s, y se repite.
-                durationMillis = 3500
-                0.50f at 0
-                0.50f at 1000
-                0.00f at 1020
-                0.00f at 3500
-            },
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "sideHintAlpha",
-    )
-    val hintPulse = if (showSideHint && interactive && !expanded) hintPulseRaw else 0f
+    var hintPulse by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(showSideHint, interactive, expanded) {
+        hintPulse = 0f
+        if (!showSideHint || !interactive || expanded) return@LaunchedEffect
+        while (true) {
+            hintPulse = 0.50f
+            delay(1_000)
+            hintPulse = 0f
+            delay(2_500)
+        }
+    }
 
     Box(Modifier.fillMaxSize()) {
         Canvas(

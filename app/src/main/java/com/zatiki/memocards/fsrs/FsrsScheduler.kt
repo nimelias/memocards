@@ -225,8 +225,7 @@ class FsrsScheduler(
         return when (current) {
             FsrsPhase.Added -> when (rating) {
                 FsrsRating.Easy -> FsrsPhase.Review
-                FsrsRating.Again, FsrsRating.Hard -> FsrsPhase.Added
-                FsrsRating.Good -> if (intervalDays >= 1) FsrsPhase.Review else FsrsPhase.Added
+                else -> if (intervalDays >= 1) FsrsPhase.Review else FsrsPhase.ReLearning
             }
             FsrsPhase.ReLearning -> when (rating) {
                 FsrsRating.Again, FsrsRating.Hard -> FsrsPhase.ReLearning
