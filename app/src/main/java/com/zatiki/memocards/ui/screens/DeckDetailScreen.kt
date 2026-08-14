@@ -1,7 +1,6 @@
 package com.zatiki.memocards.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -50,6 +49,8 @@ import com.zatiki.memocards.domain.Note
 import com.zatiki.memocards.domain.UiSettings
 import com.zatiki.memocards.ui.ClozeFormat
 import com.zatiki.memocards.ui.components.AmbientGlowBackdrop
+import com.zatiki.memocards.ui.components.BottomBarContentGap
+import com.zatiki.memocards.ui.components.memoGlass
 import com.zatiki.memocards.ui.theme.LocalMemoPalette
 import com.zatiki.memocards.ui.theme.scaledSp
 import kotlinx.coroutines.launch
@@ -125,7 +126,7 @@ fun DeckDetailScreen(
                     .weight(1f)
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp),
-                contentPadding = PaddingValues(top = 4.dp, bottom = 20.dp),
+                contentPadding = PaddingValues(top = 4.dp, bottom = BottomBarContentGap),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 item {
@@ -133,7 +134,7 @@ fun DeckDetailScreen(
                     Column(
                         Modifier
                             .fillMaxWidth()
-                            .background(palette.surface, heroShape)
+                            .memoGlass(palette, heroShape, alpha = 0.70f)
                             .padding(16.dp),
                     ) {
                         Text(
@@ -298,8 +299,7 @@ fun DeckDetailScreen(
                         Column(
                             Modifier
                                 .fillMaxWidth()
-                                .border(1.dp, palette.border, RoundedCornerShape(10.dp))
-                                .background(palette.card, RoundedCornerShape(10.dp))
+                                .memoGlass(palette, RoundedCornerShape(10.dp), alpha = 0.70f, elevation = 3.dp)
                                 .padding(12.dp),
                         ) {
                             Box(
@@ -363,7 +363,7 @@ private fun BucketCard(
     val shape = RoundedCornerShape(16.dp)
     Column(
         modifier
-            .background(palette.surface, shape)
+            .memoGlass(palette, shape, alpha = 0.68f, elevation = 4.dp)
             .padding(14.dp),
     ) {
         Box(

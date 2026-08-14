@@ -23,6 +23,7 @@ data class DeckEntity(
     @ColumnInfo(name = "study_start_at") val studyStartAt: Long? = null,
     @ColumnInfo(name = "remote_deck_id") val remoteDeckId: Long? = null,
     val source: String? = null,
+    val subject: String? = null,
     @ColumnInfo(name = "created_at") val createdAt: Long,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,
 )
@@ -140,6 +141,8 @@ data class BookEntity(
     val markdown: String,
     @ColumnInfo(name = "remote_book_id") val remoteBookId: Long? = null,
     val source: String? = null,
+    val subject: String? = null,
+    @ColumnInfo(name = "annotations_json") val annotationsJson: String = "[]",
     @ColumnInfo(name = "created_at") val createdAt: Long,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,
 )
@@ -501,7 +504,7 @@ interface MemoDao {
         AppSettingEntity::class,
         BookEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = false,
 )
 abstract class MemoDatabase : RoomDatabase() {

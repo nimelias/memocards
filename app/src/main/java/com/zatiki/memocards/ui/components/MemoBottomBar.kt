@@ -1,7 +1,6 @@
 package com.zatiki.memocards.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -47,14 +46,12 @@ fun MemoBottomBar(
     modifier: Modifier = Modifier,
 ) {
     val palette = LocalMemoPalette.current
-    val barShape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
+    val barShape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp)
 
     Box(
         modifier
             .fillMaxWidth()
-            .shadow(12.dp, barShape)
-            .background(palette.card, barShape)
-            .border(1.dp, palette.border, barShape)
+            .memoGlass(palette, barShape, alpha = 0.58f, elevation = 16.dp)
             .navigationBarsPadding()
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {

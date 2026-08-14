@@ -5,6 +5,9 @@ import android.os.Build
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
@@ -16,6 +19,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -71,8 +77,11 @@ class MainActivity : ComponentActivity() {
             if (!ready) return@setContent
 
             MemoCardsTheme(settings = settings) {
+                val layoutDirection = LocalLayoutDirection.current
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
+                    containerColor = Color.Transparent,
+                    contentWindowInsets = WindowInsets(0, 0, 0, 0),
                     bottomBar = {
                         if (showBottomBar) {
                             MemoBottomBar(
@@ -117,7 +126,12 @@ class MainActivity : ComponentActivity() {
                         startDestination = Routes.DeckList.route,
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(padding),
+                            .padding(
+                                start = padding.calculateStartPadding(layoutDirection),
+                                top = padding.calculateTopPadding(),
+                                end = padding.calculateEndPadding(layoutDirection),
+                                bottom = if (showBottomBar) 0.dp else padding.calculateBottomPadding(),
+                            ),
                     ) {
                         composable(Routes.DeckList.route) {
                             DeckListScreen(

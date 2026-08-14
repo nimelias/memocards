@@ -28,6 +28,8 @@ import androidx.compose.ui.unit.dp
 import com.zatiki.memocards.data.MemoRepository
 import com.zatiki.memocards.domain.Deck
 import com.zatiki.memocards.domain.NoteSearchHit
+import com.zatiki.memocards.ui.components.BottomBarContentGap
+import com.zatiki.memocards.ui.components.memoGlass
 import com.zatiki.memocards.ui.theme.LocalMemoPalette
 import com.zatiki.memocards.ui.theme.scaledSp
 import kotlinx.coroutines.delay
@@ -96,7 +98,7 @@ fun SearchScreen(
             else -> {
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(bottom = 24.dp),
+                    contentPadding = PaddingValues(bottom = BottomBarContentGap),
                 ) {
                     if (decks.isNotEmpty()) {
                         item {
@@ -150,7 +152,7 @@ private fun ResultRow(
     Column(
         Modifier
             .fillMaxWidth()
-            .background(palette.surface, shape)
+            .memoGlass(palette, shape, alpha = 0.70f, elevation = 4.dp)
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
     ) {

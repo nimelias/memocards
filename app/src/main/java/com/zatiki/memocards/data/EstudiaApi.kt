@@ -1,5 +1,6 @@
 package com.zatiki.memocards.data
 
+import com.zatiki.memocards.domain.BookAnnotation
 import com.zatiki.memocards.domain.EstudiaDeckSummary
 import com.zatiki.memocards.domain.EstudiaProject
 import com.zatiki.memocards.domain.EstudiaRemoteCard
@@ -129,7 +130,7 @@ class EstudiaApi(
         }
     }
 
-    suspend fun fetchBook(remoteBookId: Long): Pair<String, String>? = withContext(Dispatchers.IO) {
+    suspend fun fetchBook(remoteBookId: Long): EstudiaBookPayload? = withContext(Dispatchers.IO) {
         try {
             val body = getJson("/api/books/$remoteBookId")
             val title = body.optString("title", "Libro estudIA")
@@ -137,21 +138,52 @@ class EstudiaApi(
                 .ifBlank { body.optString("content") }
                 .ifBlank { body.optString("body") }
             if (markdown.isBlank()) {
-                // Fallback: export Markdown clásico (texto plano).
                 markdown = getText("/api/books/$remoteBookId/export?format=md")
             }
             if (markdown.isBlank()) {
-                // Último recurso: ensamblar desde renderAtoms.
                 markdown = markdownFromAtoms(body)
             }
-            val highlights = body.optJSONArray("highlights")
-            if (highlights != null && highlights.length() > 0 && !markdown.contains("## Anotaciones")) {
-                markdown = appendHighlightsMarkdown(markdown, highlights)
-            }
-            if (markdown.isBlank()) null else title to markdown
+            val annotations = collectAnnotations(body)
+            if (markdown.isBlank() && annotations.isEmpty()) null
+            else EstudiaBookPayload(title = title, markdown = markdown, annotations = annotations)
         } catch (e: Exception) {
             throw EstudiaApiException("Libro $remoteBookId: ${e.toUserCause()}")
         }
+    }
+
+    private fun collectAnnotations(body: JSONObject): List<BookAnnotation> {
+        val out = mutableListOf<BookAnnotation>()
+        fun addArray(arr: JSONArray?) {
+            if (arr == null) return
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                BookAnnotationCodec.fromObject(o)?.let { out += it }
+            }
+        }
+        addArray(body.optJSONArray("highlights"))
+        addArray(body.optJSONArray("annotations"))
+        addArray(body.optJSONArray("notes"))
+        addArray(body.optJSONArray("underlines"))
+        addArray(body.optJSONArray("quotes"))
+        addArray(body.optJSONArray("fragments"))
+        body.optJSONObject("data")?.let { data ->
+            addArray(data.optJSONArray("highlights"))
+            addArray(data.optJSONArray("annotations"))
+            addArray(data.optJSONArray("notes"))
+        }
+        val atoms = body.optJSONArray("renderAtoms")
+        if (atoms != null) {
+            for (i in 0 until atoms.length()) {
+                val atom = atoms.optJSONObject(i) ?: continue
+                val type = atom.optString("compositionType").lowercase()
+                if (type.contains("highlight") || type.contains("annotation") ||
+                    type.contains("note") || type.contains("underline") || type.contains("quote")
+                ) {
+                    BookAnnotationCodec.fromObject(atom)?.let { out += it }
+                }
+            }
+        }
+        return out.distinctBy { Triple(it.quote, it.note, it.fragment) }
     }
 
     private fun markdownFromAtoms(body: JSONObject): String {
@@ -183,19 +215,6 @@ class EstudiaApi(
             }
         }
         return lines.joinToString("\n").trim()
-    }
-
-    private fun appendHighlightsMarkdown(markdown: String, highlights: JSONArray): String {
-        val lines = mutableListOf(markdown.trimEnd(), "", "---", "", "## Anotaciones", "")
-        for (i in 0 until highlights.length()) {
-            val h = highlights.optJSONObject(i) ?: continue
-            val text = h.optString("body", "").ifBlank { h.optString("text", "") }.trim()
-            if (text.isBlank()) continue
-            val color = h.optString("color", "mark").ifBlank { "mark" }
-            lines += "> [$color] $text"
-            lines += ""
-        }
-        return lines.joinToString("\n")
     }
 
     /**
@@ -286,6 +305,12 @@ class EstudiaApi(
         return base + p
     }
 }
+
+data class EstudiaBookPayload(
+    val title: String,
+    val markdown: String,
+    val annotations: List<BookAnnotation> = emptyList(),
+)
 
 class EstudiaApiException(message: String) : Exception(message)
 

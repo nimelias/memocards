@@ -26,6 +26,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -46,6 +47,7 @@ import com.zatiki.memocards.domain.RatingLayout
 import com.zatiki.memocards.domain.SyncSettings
 import com.zatiki.memocards.domain.ThemeName
 import com.zatiki.memocards.domain.UiSettings
+import com.zatiki.memocards.ui.components.BottomBarContentGap
 import com.zatiki.memocards.ui.theme.LocalMemoPalette
 import com.zatiki.memocards.ui.theme.scaledSp
 import kotlinx.coroutines.launch
@@ -71,6 +73,9 @@ fun SettingsScreen(
     var projects by remember { mutableStateOf<List<EstudiaProject>>(emptyList()) }
     var syncMessage by remember { mutableStateOf<String?>(null) }
     var testing by remember { mutableStateOf(false) }
+    var logRevision by remember { mutableIntStateOf(0) }
+    val eventLog = remember(logRevision) { CrashLog.read(context) }
+    val eventCount = remember(logRevision) { CrashLog.eventCount(context) }
 
     LaunchedEffect(Unit) {
         syncSettings = repo.getSyncSettings()
@@ -287,6 +292,15 @@ fun SettingsScreen(
             color = palette.muted,
             fontSize = scaledSp(12f),
         )
+        if (!syncSettings.projectName.isNullOrBlank()) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Asignatura activa: ${syncSettings.projectName}",
+                color = palette.text,
+                fontSize = scaledSp(13f),
+                fontWeight = FontWeight.Medium,
+            )
+        }
         Spacer(Modifier.height(12.dp))
         OutlinedTextField(
             value = syncSettings.baseUrl,
@@ -324,10 +338,14 @@ fun SettingsScreen(
                     scope.launch {
                         try {
                             projects = repo.listEstudiaProjects(syncSettings)
+                            val selected = projects.find { it.id == syncSettings.projectId }
+                            if (selected != null && syncSettings.projectName != selected.name) {
+                                persistSync(syncSettings.copy(projectName = selected.name))
+                            }
                             syncMessage = if (projects.isEmpty()) {
-                                "Sin proyectos (¿URL, X-KEY o permisos?)"
+                                "Sin asignaturas (¿URL, X-KEY o permisos?)"
                             } else {
-                                "${projects.size} proyectos"
+                                "${projects.size} asignaturas"
                             }
                         } catch (e: Exception) {
                             projects = emptyList()
@@ -336,7 +354,7 @@ fun SettingsScreen(
                     }
                 },
                 modifier = Modifier.weight(1f),
-            ) { Text("Cargar proyectos") }
+            ) { Text("Cargar asignaturas") }
         }
         if (projects.isNotEmpty()) {
             Spacer(Modifier.height(8.dp))
@@ -345,7 +363,9 @@ fun SettingsScreen(
             projects.forEach { project ->
                 FilterChip(
                     selected = syncSettings.projectId == project.id,
-                    onClick = { persistSync(syncSettings.copy(projectId = project.id)) },
+                    onClick = {
+                        persistSync(syncSettings.copy(projectId = project.id, projectName = project.name))
+                    },
                     label = { Text(project.name) },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -389,22 +409,45 @@ fun SettingsScreen(
             Text(it, color = palette.muted, fontSize = scaledSp(12f))
         }
 
-        CrashLog.read(context)?.let { crash ->
-            Spacer(Modifier.height(16.dp))
-            Text(
-                "Último fallo (para soporte)",
-                fontWeight = FontWeight.SemiBold,
-                color = palette.text,
-                fontSize = scaledSp(15f),
-            )
-            Text(crash.take(400), color = palette.muted, fontSize = scaledSp(11f))
+        Spacer(Modifier.height(24.dp))
+        Text(
+            "Registro de eventos",
+            fontWeight = FontWeight.SemiBold,
+            color = palette.text,
+            fontSize = scaledSp(15f),
+        )
+        Text(
+            if (eventCount == 0) {
+                "Sin eventos guardados."
+            } else {
+                "$eventCount eventos (se conservan los últimos 120)."
+            },
+            color = palette.muted,
+            fontSize = scaledSp(12f),
+        )
+        eventLog?.let { log ->
+            Spacer(Modifier.height(6.dp))
+            Text(log.take(700), color = palette.muted, fontSize = scaledSp(11f))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TextButton(
                 onClick = {
-                    clipboard.setText(AnnotatedString(crash))
-                    syncMessage = "Log de fallo copiado al portapapeles"
+                    val body = eventLog.orEmpty()
+                    clipboard.setText(AnnotatedString(body.ifBlank { "(log vacío)" }))
+                    syncMessage = "Log copiado al portapapeles"
                 },
             ) {
-                Text("Copiar último fallo")
+                Text("Copiar log")
+            }
+            TextButton(
+                onClick = {
+                    CrashLog.clear(context)
+                    logRevision += 1
+                    syncMessage = "Log borrado"
+                },
+                enabled = eventCount > 0,
+            ) {
+                Text("Borrar log")
             }
         }
 
@@ -414,5 +457,6 @@ fun SettingsScreen(
             color = palette.muted,
             fontSize = scaledSp(12f),
         )
+        Spacer(Modifier.height(BottomBarContentGap))
     }
 }

@@ -38,6 +38,8 @@ data class Deck(
     val studyStartAt: Long? = null,
     val remoteDeckId: Long? = null,
     val source: String? = null,
+    /** Asignatura / proyecto de estudIA; agrupa mazos en el inicio. */
+    val subject: String? = null,
     val createdAt: Long,
     val updatedAt: Long,
 )
@@ -155,12 +157,22 @@ data class UiSettings(
     val glowIntensity: Float = 1f,
 )
 
+data class BookAnnotation(
+    val quote: String = "",
+    val note: String = "",
+    val fragment: String = "",
+    val color: String = "mark",
+    val chapter: String = "",
+)
+
 data class Book(
     val id: Long = 0,
     val title: String,
     val markdown: String,
     val remoteBookId: Long? = null,
     val source: String? = null,
+    val subject: String? = null,
+    val annotations: List<BookAnnotation> = emptyList(),
     val createdAt: Long,
     val updatedAt: Long,
 )
@@ -175,6 +187,7 @@ data class SyncSettings(
     val baseUrl: String = "https://estudia.zatiki.xyz:3005",
     val apiKey: String = "123",
     val projectId: Long? = null,
+    val projectName: String? = null,
     val autoSyncEnabled: Boolean = false,
     val autoSyncIntervalMinutes: Int = 30,
     val lastSyncAt: Long = 0L,

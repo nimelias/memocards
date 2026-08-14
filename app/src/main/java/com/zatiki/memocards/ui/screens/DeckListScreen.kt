@@ -18,13 +18,16 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -40,7 +43,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -61,9 +63,13 @@ import com.zatiki.memocards.domain.Deck
 import com.zatiki.memocards.domain.DeckSummary
 import com.zatiki.memocards.domain.EstudiaBookSummary
 import com.zatiki.memocards.domain.EstudiaDeckSummary
+import com.zatiki.memocards.domain.EstudiaProject
 import com.zatiki.memocards.domain.HomeStats
+import com.zatiki.memocards.domain.SyncSettings
 import com.zatiki.memocards.domain.UiSettings
 import com.zatiki.memocards.ui.components.AmbientGlowBackdrop
+import com.zatiki.memocards.ui.components.BottomBarContentGap
+import com.zatiki.memocards.ui.components.memoGlass
 import com.zatiki.memocards.ui.theme.LocalMemoPalette
 import com.zatiki.memocards.ui.theme.scaledSp
 import java.text.SimpleDateFormat
@@ -87,6 +93,8 @@ fun DeckListScreen(
     var showImport by remember { mutableStateOf(false) }
     var remoteDecks by remember { mutableStateOf<List<EstudiaDeckSummary>>(emptyList()) }
     var remoteBooks by remember { mutableStateOf<List<EstudiaBookSummary>>(emptyList()) }
+    var remoteProjects by remember { mutableStateOf<List<EstudiaProject>>(emptyList()) }
+    var selectedProjectId by remember { mutableStateOf<Long?>(null) }
     var importLoading by remember { mutableStateOf(false) }
     var importMessage by remember { mutableStateOf<String?>(null) }
     var importLog by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -97,19 +105,25 @@ fun DeckListScreen(
     fun appendImportLog(line: String) {
         val ts = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date())
         importLog = (importLog + "[$ts] $line").takeLast(200)
+        CrashLog.record(context, line)
     }
 
     fun copyImportLog() {
-        val crash = CrashLog.read(context)
-        val body = buildString {
-            append(importLog.joinToString("\n"))
-            if (!crash.isNullOrBlank()) {
-                append("\n\n--- último fallo ---\n")
-                append(crash)
-            }
-        }
+        val persisted = CrashLog.read(context)
+        val body = persisted ?: importLog.joinToString("\n")
         clipboard.setText(AnnotatedString(body.ifBlank { "(log vacío)" }))
         importMessage = "Log copiado al portapapeles"
+    }
+
+    suspend fun loadCatalogFor(sync: SyncSettings) {
+        selectedProjectId = sync.projectId
+        if (sync.projectId == null) {
+            remoteDecks = emptyList()
+            remoteBooks = emptyList()
+            return
+        }
+        remoteDecks = repo.listEstudiaDecks(sync)
+        remoteBooks = repo.listEstudiaBooks(sync)
     }
 
     suspend fun reload() {
@@ -187,8 +201,7 @@ fun DeckListScreen(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .shadow(2.dp, statsShape)
-                        .background(palette.surface, statsShape)
+                        .memoGlass(palette, statsShape, alpha = 0.70f)
                         .padding(vertical = 20.dp, horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -221,17 +234,30 @@ fun DeckListScreen(
                             try {
                                 val sync = repo.getSyncSettings()
                                 appendImportLog(
-                                    "sync url=${sync.baseUrl} project=${sync.projectId} keyLen=${sync.apiKey.length}",
+                                    "sync url=${sync.baseUrl} project=${sync.projectId} (${sync.projectName ?: "sin asignatura"}) keyLen=${sync.apiKey.length}",
                                 )
-                                remoteDecks = repo.listEstudiaDecks(sync)
-                                remoteBooks = repo.listEstudiaBooks(sync)
-                                if (remoteDecks.isEmpty() && remoteBooks.isEmpty()) {
-                                    importMessage = "Configura estudIA en Ajustes o no hay barajas/libros"
-                                    appendImportLog("Sin resultados de barajas/libros")
-                                } else {
-                                    appendImportLog("Catálogo cargado: ${remoteDecks.size} barajas, ${remoteBooks.size} libros")
-                                    showImport = true
+                                remoteProjects = repo.listEstudiaProjects(sync)
+                                var next = sync
+                                if (next.projectId != null && next.projectName.isNullOrBlank()) {
+                                    val match = remoteProjects.find { it.id == next.projectId }
+                                    if (match != null) {
+                                        next = next.copy(projectName = match.name)
+                                        repo.saveSyncSettings(next)
+                                    }
                                 }
+                                loadCatalogFor(next)
+                                if (remoteProjects.isEmpty()) {
+                                    importMessage = "Conectado, pero estudIA no devolvió asignaturas"
+                                    appendImportLog("Sin asignaturas en /api/projects")
+                                } else if (next.projectId == null) {
+                                    importMessage = "Elige la asignatura para ver barajas y libros"
+                                    appendImportLog("Catálogo: ${remoteProjects.size} asignaturas, falta contexto")
+                                } else {
+                                    appendImportLog(
+                                        "Catálogo ${next.projectName}: ${remoteDecks.size} barajas, ${remoteBooks.size} libros",
+                                    )
+                                }
+                                showImport = true
                             } catch (e: Exception) {
                                 val cause = e.toUserCause()
                                 importMessage = "Error al cargar catálogo: $cause"
@@ -258,7 +284,7 @@ fun DeckListScreen(
                 importMessage?.let {
                     Text(it, color = palette.muted, fontSize = scaledSp(12f))
                 }
-                if (importLog.isNotEmpty()) {
+                if (importLog.isNotEmpty() || CrashLog.read(context) != null) {
                     TextButton(
                         onClick = { copyImportLog() },
                         contentPadding = PaddingValues(0.dp),
@@ -271,71 +297,55 @@ fun DeckListScreen(
 
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = PaddingValues(bottom = 24.dp),
+                    contentPadding = PaddingValues(bottom = BottomBarContentGap),
                     modifier = Modifier.weight(1f),
                 ) {
                     if (books.isNotEmpty()) {
                         item {
-                            Column {
-                                Box(
+                            SectionChip(label = "LIBROS")
+                        }
+                        val bookSubjects = groupedSubjectKeys(books.map { it.subject })
+                        val showBookSubjects = bookSubjects.size > 1 || bookSubjects.first() != "Otros"
+                        bookSubjects.forEach { subject ->
+                            if (showBookSubjects) {
+                                item(key = "book-subject-$subject") {
+                                    SubjectHeader(subject)
+                                }
+                            }
+                            items(
+                                books.filter { subjectOf(it.subject) == subject },
+                                key = { "book-${it.id}" },
+                            ) { book ->
+                                val shape = RoundedCornerShape(14.dp)
+                                Row(
                                     Modifier
-                                        .background(palette.surface, RoundedCornerShape(50))
-                                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                                        .fillMaxWidth()
+                                        .memoGlass(palette, shape, alpha = 0.68f, elevation = 4.dp)
+                                        .clickable { onOpenBook(book.id) }
+                                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Text(
-                                        "LIBROS",
+                                        book.title,
+                                        color = palette.text,
+                                        fontSize = scaledSp(16f),
+                                        fontWeight = FontWeight.Medium,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    Text(
+                                        "Leer",
                                         color = palette.primary,
+                                        fontSize = scaledSp(14f),
                                         fontWeight = FontWeight.SemiBold,
-                                        fontSize = scaledSp(12f),
                                     )
                                 }
-                                Spacer(Modifier.height(8.dp))
-                            }
-                        }
-                        items(books, key = { "book-${it.id}" }) { book ->
-                            val shape = RoundedCornerShape(14.dp)
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .background(palette.surface, shape)
-                                    .clickable { onOpenBook(book.id) }
-                                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    book.title,
-                                    color = palette.text,
-                                    fontSize = scaledSp(16f),
-                                    fontWeight = FontWeight.Medium,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                Text(
-                                    "Leer",
-                                    color = palette.primary,
-                                    fontSize = scaledSp(14f),
-                                    fontWeight = FontWeight.SemiBold,
-                                )
                             }
                         }
                         item { Spacer(Modifier.height(12.dp)) }
                     }
 
                     item {
-                        Column {
-                            Box(
-                                Modifier
-                                    .background(palette.surface, RoundedCornerShape(50))
-                                    .padding(horizontal = 14.dp, vertical = 6.dp),
-                            ) {
-                                Text(
-                                    "DECKS",
-                                    color = palette.primary,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = scaledSp(12f),
-                                )
-                            }
-                            Spacer(Modifier.height(8.dp))
-                        }
+                        SectionChip(label = "DECKS")
                     }
 
                     if (decks.isEmpty()) {
@@ -347,36 +357,48 @@ fun DeckListScreen(
                             )
                         }
                     } else {
-                        items(decks, key = { it.deck.id }) { summary ->
-                            val shape = RoundedCornerShape(14.dp)
-                            Column(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .background(palette.surface, shape)
-                                    .clickable { onOpenDeck(summary.deck) }
-                                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+                        val deckSubjects = groupedSubjectKeys(decks.map { it.deck.subject })
+                        val showDeckSubjects = deckSubjects.size > 1 || deckSubjects.first() != "Otros"
+                        deckSubjects.forEach { subject ->
+                            if (showDeckSubjects) {
+                                item(key = "deck-subject-$subject") {
+                                    SubjectHeader(subject)
+                                }
+                            }
+                            items(
+                                decks.filter { subjectOf(it.deck.subject) == subject },
+                                key = { it.deck.id },
+                            ) { summary ->
+                                val shape = RoundedCornerShape(14.dp)
+                                Column(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .memoGlass(palette, shape, alpha = 0.68f, elevation = 4.dp)
+                                        .clickable { onOpenDeck(summary.deck) }
+                                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            summary.deck.name,
+                                            color = palette.text,
+                                            fontSize = scaledSp(16f),
+                                            fontWeight = FontWeight.Medium,
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                        Text(
+                                            summary.cardCount.toString(),
+                                            color = palette.primary,
+                                            fontSize = scaledSp(16f),
+                                            fontWeight = FontWeight.Bold,
+                                        )
+                                    }
+                                    Spacer(Modifier.height(6.dp))
                                     Text(
-                                        summary.deck.name,
-                                        color = palette.text,
-                                        fontSize = scaledSp(16f),
-                                        fontWeight = FontWeight.Medium,
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    Text(
-                                        summary.cardCount.toString(),
-                                        color = palette.primary,
-                                        fontSize = scaledSp(16f),
-                                        fontWeight = FontWeight.Bold,
+                                        typeSummaryLabel(summary),
+                                        color = palette.muted,
+                                        fontSize = scaledSp(12f),
                                     )
                                 }
-                                Spacer(Modifier.height(6.dp))
-                                Text(
-                                    typeSummaryLabel(summary),
-                                    color = palette.muted,
-                                    fontSize = scaledSp(12f),
-                                )
                             }
                         }
                     }
@@ -390,7 +412,10 @@ fun DeckListScreen(
             onDismissRequest = { showImport = false },
             title = { Text("Importar desde estudIA") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                ) {
                     importMessage?.let { msg ->
                         Text(msg, color = palette.muted, fontSize = scaledSp(12f))
                     }
@@ -402,7 +427,59 @@ fun DeckListScreen(
                             Text("Copiar log de importación", color = palette.primary, fontSize = scaledSp(13f))
                         }
                     }
+                    Text("Asignatura", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "El contexto de importación es la asignatura. Mazos y libros se agrupan con ese nombre.",
+                        color = palette.muted,
+                        fontSize = scaledSp(12f),
+                    )
+                    if (remoteProjects.isEmpty()) {
+                        Text(
+                            "No hay asignaturas. Revisa URL y X-KEY en Ajustes.",
+                            color = palette.muted,
+                            fontSize = scaledSp(12f),
+                        )
+                    } else {
+                        remoteProjects.forEach { project ->
+                            FilterChip(
+                                selected = selectedProjectId == project.id,
+                                onClick = {
+                                    scope.launch {
+                                        importLoading = true
+                                        try {
+                                            val next = repo.getSyncSettings().copy(
+                                                projectId = project.id,
+                                                projectName = project.name,
+                                            )
+                                            repo.saveSyncSettings(next)
+                                            selectedProjectId = project.id
+                                            appendImportLog("Asignatura: ${project.name} (${project.id})")
+                                            loadCatalogFor(next)
+                                            importMessage = "${project.name}: ${remoteDecks.size} barajas, ${remoteBooks.size} libros"
+                                        } catch (e: Exception) {
+                                            importMessage = "Error al cargar ${project.name}: ${e.toUserCause()}"
+                                            appendImportLog("Fallo catálogo ${project.id}:\n${e.toPostmortem()}")
+                                            CrashLog.record(context, e.toPostmortem())
+                                        } finally {
+                                            importLoading = false
+                                        }
+                                    }
+                                },
+                                label = { Text(project.name) },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
+                    if (selectedProjectId == null) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Selecciona una asignatura para listar barajas y libros.",
+                            color = palette.muted,
+                            fontSize = scaledSp(12f),
+                        )
+                    }
                     if (remoteBooks.isNotEmpty()) {
+                        Spacer(Modifier.height(8.dp))
                         Text("Libros", fontWeight = FontWeight.SemiBold)
                         remoteBooks.forEach { remote ->
                             Button(
@@ -426,14 +503,15 @@ fun DeckListScreen(
                                         }
                                     }
                                 },
+                                enabled = !importLoading,
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
                                 Text(remote.title)
                             }
                         }
-                        Spacer(Modifier.height(8.dp))
                     }
                     if (remoteDecks.isNotEmpty()) {
+                        Spacer(Modifier.height(8.dp))
                         Text("Barajas", fontWeight = FontWeight.SemiBold)
                         remoteDecks.forEach { remote ->
                             Button(
@@ -462,6 +540,7 @@ fun DeckListScreen(
                                         }
                                     }
                                 },
+                                enabled = !importLoading,
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
                                 Text("${remote.title} (${remote.cardCount} cartas)")
@@ -505,6 +584,45 @@ private fun typeSummaryLabel(summary: DeckSummary): String {
         if (summary.qaCount > 0) add("${summary.qaCount} Q&A")
     }
     return if (parts.isEmpty()) "${summary.cardCount} cartas" else parts.joinToString(" · ")
+}
+
+private fun subjectOf(name: String?): String = name?.takeIf { it.isNotBlank() } ?: "Otros"
+
+private fun groupedSubjectKeys(names: List<String?>): List<String> {
+    val keys = names.map { subjectOf(it) }.distinct()
+    return keys.sortedWith(compareBy<String> { if (it == "Otros") 1 else 0 }.thenBy { it.lowercase() })
+}
+
+@Composable
+private fun SectionChip(label: String) {
+    val palette = LocalMemoPalette.current
+    Column {
+        Box(
+            Modifier
+                .memoGlass(palette, RoundedCornerShape(50), alpha = 0.62f, elevation = 2.dp)
+                .padding(horizontal = 14.dp, vertical = 6.dp),
+        ) {
+            Text(
+                label,
+                color = palette.primary,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = scaledSp(12f),
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun SubjectHeader(subject: String) {
+    val palette = LocalMemoPalette.current
+    Text(
+        subject,
+        color = palette.muted,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = scaledSp(12f),
+        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
+    )
 }
 
 @Composable

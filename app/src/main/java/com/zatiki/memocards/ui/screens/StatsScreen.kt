@@ -40,6 +40,8 @@ import com.zatiki.memocards.data.MemoRepository
 import com.zatiki.memocards.domain.ActivityStats
 import com.zatiki.memocards.domain.DayActivity
 import com.zatiki.memocards.domain.HourActivity
+import com.zatiki.memocards.ui.components.BottomBarContentGap
+import com.zatiki.memocards.ui.components.memoGlass
 import com.zatiki.memocards.ui.theme.LocalMemoPalette
 import com.zatiki.memocards.ui.theme.scaledSp
 import kotlin.math.roundToInt
@@ -108,7 +110,7 @@ fun StatsScreen(
         Column(
             Modifier
                 .fillMaxWidth()
-                .background(palette.surface, cardShape)
+                .memoGlass(palette, cardShape, alpha = 0.70f)
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -153,6 +155,7 @@ fun StatsScreen(
                 LegendDot(RATING_EASY, "Fácil")
             }
         }
+        Spacer(Modifier.height(BottomBarContentGap))
     }
 }
 

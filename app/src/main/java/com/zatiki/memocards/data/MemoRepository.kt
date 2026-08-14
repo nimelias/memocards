@@ -20,6 +20,7 @@ import com.zatiki.memocards.domain.EstudiaDeckSummary
 import com.zatiki.memocards.domain.EstudiaBookSummary
 import com.zatiki.memocards.domain.EstudiaProject
 import com.zatiki.memocards.domain.Book
+import com.zatiki.memocards.domain.BookAnnotation
 import com.zatiki.memocards.domain.RatingLayout
 import com.zatiki.memocards.domain.ReviewRating
 import com.zatiki.memocards.fsrs.FsrsCardState
@@ -95,6 +96,7 @@ class MemoRepository(private val dao: MemoDao) {
         studyStartAt = studyStartAt,
         remoteDeckId = remoteDeckId,
         source = source,
+        subject = subject,
         createdAt = createdAt,
         updatedAt = updatedAt,
     )
@@ -614,6 +616,7 @@ class MemoRepository(private val dao: MemoDao) {
             baseUrl = baseUrl,
             apiKey = map[SYNC_API_KEY_KEY] ?: defaults.apiKey,
             projectId = map[SYNC_PROJECT_ID_KEY]?.toLongOrNull(),
+            projectName = map[SYNC_PROJECT_NAME_KEY]?.takeIf { it.isNotBlank() },
             autoSyncEnabled = map[SYNC_AUTO_KEY] == "1",
             autoSyncIntervalMinutes = map[SYNC_INTERVAL_KEY]?.toIntOrNull()?.coerceIn(5, 24 * 60) ?: 30,
             lastSyncAt = map[SYNC_LAST_AT_KEY]?.toLongOrNull() ?: 0L,
@@ -629,6 +632,7 @@ class MemoRepository(private val dao: MemoDao) {
                 next.projectId?.toString().orEmpty(),
             ),
         )
+        dao.upsertSetting(AppSettingEntity(SYNC_PROJECT_NAME_KEY, next.projectName.orEmpty()))
         dao.upsertSetting(AppSettingEntity(SYNC_AUTO_KEY, if (next.autoSyncEnabled) "1" else "0"))
         dao.upsertSetting(AppSettingEntity(SYNC_INTERVAL_KEY, next.autoSyncIntervalMinutes.toString()))
         dao.upsertSetting(AppSettingEntity(SYNC_LAST_AT_KEY, next.lastSyncAt.toString()))
@@ -667,6 +671,10 @@ class MemoRepository(private val dao: MemoDao) {
         markdown = markdown,
         remoteBookId = remoteBookId,
         source = source,
+        subject = subject,
+        annotations = BookAnnotationCodec.fromJson(annotationsJson).ifEmpty {
+            BookAnnotationCodec.fromMarkdown(markdown)
+        },
         createdAt = createdAt,
         updatedAt = updatedAt,
     )
@@ -675,13 +683,28 @@ class MemoRepository(private val dao: MemoDao) {
 
     suspend fun getBook(id: Long): Book? = dao.getBook(id)?.toDomain()
 
-    suspend fun upsertLocalBook(title: String, markdown: String, remoteBookId: Long? = null, source: String? = null): Long {
+    suspend fun upsertLocalBook(
+        title: String,
+        markdown: String,
+        remoteBookId: Long? = null,
+        source: String? = null,
+        subject: String? = null,
+        annotations: List<BookAnnotation> = emptyList(),
+    ): Long {
         val ts = System.currentTimeMillis()
+        val annotationsJson = BookAnnotationCodec.toJson(annotations)
         val id = if (remoteBookId != null) {
             val existing = dao.getBookByRemoteId(remoteBookId)
             if (existing != null) {
                 dao.updateBook(
-                    existing.copy(title = title, markdown = markdown, updatedAt = ts, source = source ?: existing.source),
+                    existing.copy(
+                        title = title,
+                        markdown = markdown,
+                        updatedAt = ts,
+                        source = source ?: existing.source,
+                        subject = subject ?: existing.subject,
+                        annotationsJson = annotationsJson,
+                    ),
                 )
                 existing.id
             } else {
@@ -695,6 +718,8 @@ class MemoRepository(private val dao: MemoDao) {
                 markdown = markdown,
                 remoteBookId = remoteBookId,
                 source = source,
+                subject = subject,
+                annotationsJson = annotationsJson,
                 createdAt = ts,
                 updatedAt = ts,
             ),
@@ -708,8 +733,16 @@ class MemoRepository(private val dao: MemoDao) {
         val api = estudiaApi(settings) ?: throw EstudiaApiException("Configura la conexión con estudIA")
         val fetched = api.fetchBook(remoteBookId)
             ?: throw EstudiaApiException("Libro no disponible en estudIA")
-        val (title, markdown) = fetched
-        return upsertLocalBook(title, markdown, remoteBookId = remoteBookId, source = SOURCE_ESTUDIA)
+        return upsertLocalBook(
+            title = fetched.title,
+            markdown = fetched.markdown,
+            remoteBookId = remoteBookId,
+            source = SOURCE_ESTUDIA,
+            subject = settings.projectName,
+            annotations = fetched.annotations.ifEmpty {
+                BookAnnotationCodec.fromMarkdown(fetched.markdown)
+            },
+        )
     }
 
     suspend fun importEstudiaDeck(remoteDeckId: Long): Long {
@@ -717,9 +750,16 @@ class MemoRepository(private val dao: MemoDao) {
         val api = estudiaApi(settings) ?: throw EstudiaApiException("Configura la conexión con estudIA")
         val (title, remoteCards) = api.fetchDeckCards(remoteDeckId)
         val ts = System.currentTimeMillis()
+        val subject = settings.projectName
         val existing = dao.getDeckByRemoteId(remoteDeckId)
         val deckId = if (existing != null) {
-            dao.updateDeck(existing.copy(name = title, updatedAt = ts))
+            dao.updateDeck(
+                existing.copy(
+                    name = title,
+                    updatedAt = ts,
+                    subject = subject ?: existing.subject,
+                ),
+            )
             existing.id
         } else {
             dao.insertDeck(
@@ -727,6 +767,7 @@ class MemoRepository(private val dao: MemoDao) {
                     name = title,
                     remoteDeckId = remoteDeckId,
                     source = SOURCE_ESTUDIA,
+                    subject = subject,
                     createdAt = ts,
                     updatedAt = ts,
                 ),
@@ -870,8 +911,15 @@ class MemoRepository(private val dao: MemoDao) {
             ensureNamedDeckCards("Q&A — Historia", HISTORY_QA_CARDS)
         }
 
-        if (version < 4) {
-            ensureDemoBookIfNeeded()
+        if (version < 5) {
+            ensureDemoBookIfNeeded(force = true)
+            val demoNames = setOf("Trivial", "Cloze — Biología", "Q&A — Historia")
+            val ts = System.currentTimeMillis()
+            for (deck in dao.listDecks()) {
+                if (deck.name in demoNames && deck.subject.isNullOrBlank()) {
+                    dao.updateDeck(deck.copy(subject = "Demo", updatedAt = ts))
+                }
+            }
         }
 
         dao.upsertSetting(AppSettingEntity(DEMO_SEEDED_KEY, "1"))
@@ -881,10 +929,31 @@ class MemoRepository(private val dao: MemoDao) {
         notifyDataChanged()
     }
 
-    private suspend fun ensureDemoBookIfNeeded() {
+    private suspend fun ensureDemoBookIfNeeded(force: Boolean = false) {
         val title = "MemoCards — Guía de lectura"
-        if (dao.listBooks().any { it.title == title }) return
-        upsertLocalBook(title, DEMO_BOOK_MARKDOWN, source = "demo")
+        val existing = dao.listBooks().find { it.title == title }
+        if (existing != null && !force) return
+        if (existing != null) {
+            val ts = System.currentTimeMillis()
+            dao.updateBook(
+                existing.copy(
+                    markdown = DEMO_BOOK_MARKDOWN,
+                    source = existing.source ?: "demo",
+                    subject = existing.subject ?: "Demo",
+                    annotationsJson = BookAnnotationCodec.toJson(DEMO_BOOK_ANNOTATIONS),
+                    updatedAt = ts,
+                ),
+            )
+            notifyDataChanged()
+            return
+        }
+        upsertLocalBook(
+            title = title,
+            markdown = DEMO_BOOK_MARKDOWN,
+            source = "demo",
+            subject = "Demo",
+            annotations = DEMO_BOOK_ANNOTATIONS,
+        )
     }
 
     private suspend fun ensureNamedDeckCards(name: String, cards: List<Pair<String, String>>) {
@@ -923,13 +992,14 @@ class MemoRepository(private val dao: MemoDao) {
         private const val SYNC_BASE_URL_KEY = "sync.baseUrl"
         private const val SYNC_API_KEY_KEY = "sync.apiKey"
         private const val SYNC_PROJECT_ID_KEY = "sync.projectId"
+        private const val SYNC_PROJECT_NAME_KEY = "sync.projectName"
         private const val SYNC_AUTO_KEY = "sync.auto"
         private const val SYNC_INTERVAL_KEY = "sync.intervalMin"
         private const val SYNC_LAST_AT_KEY = "sync.lastAt"
         private const val DEMO_SEEDED_KEY = "demo.seeded"
         /** Clave histórica; el valor es la versión de contenido demo. */
         private const val DEMO_TRIVIAL_VERSION_KEY = "demo.trivial.version"
-        private const val DEMO_CONTENT_VERSION = 4
+        private const val DEMO_CONTENT_VERSION = 5
 
         private val DEMO_BOOK_MARKDOWN = """
             # Memoria y repetición espaciada
@@ -956,8 +1026,31 @@ class MemoRepository(private val dao: MemoDao) {
 
             ## Libros desde estudIA
 
-            Cuando el bridge exponga libros, se importarán junto a las barajas. El markdown llega limpio: títulos, párrafos y listas.
+            Cuando importas un libro, las anotaciones, subrayados y fragmentos llegan junto al texto y se listan en la pestaña Anotaciones.
         """.trimIndent()
+
+        private val DEMO_BOOK_ANNOTATIONS = listOf(
+            BookAnnotation(
+                quote = "El olvido no es fallo: es selección.",
+                note = "Idea central: el algoritmo aprovecha el olvido, no lo combate a ciegas.",
+                fragment = "Repasar justo cuando la huella se debilita consolida el recuerdo sin saturar.",
+                color = "yellow",
+                chapter = "Por qué funciona",
+            ),
+            BookAnnotation(
+                quote = "Califica con honestidad — el algoritmo necesita señal real.",
+                note = "Una calificación inflada retrasa el repaso y genera falsos recuerdos de dominio.",
+                fragment = "Lee el anverso; revela cuando estés listo.",
+                color = "blue",
+                chapter = "Cómo estudiar",
+            ),
+            BookAnnotation(
+                quote = "Usa `[...]` en el frente y la respuesta en el reverso",
+                note = "También vale la sintaxis Anki `{{c1::texto}}`.",
+                color = "green",
+                chapter = "Cloze",
+            ),
+        )
 
         private val TRIVIAL_CARDS = listOf(
             "¿Cuál es la capital de Francia?" to "París",
