@@ -27,7 +27,14 @@ data class NoteFields(
     val back: String = "",
     val frontImage: String? = null,
     val backImage: String? = null,
-)
+    /** "basic" (anverso/reverso o cloze) o "mcq" (pregunta tipo test). */
+    val type: String = "basic",
+    val options: List<String> = emptyList(),
+    val correctIndex: Int = 0,
+) {
+    val isMcq: Boolean
+        get() = type == "mcq" && options.size >= 2
+}
 
 data class Deck(
     val id: Long = 0,
@@ -105,6 +112,7 @@ data class DeckSummary(
     val cardCount: Int,
     val clozeCount: Int = 0,
     val qaCount: Int = 0,
+    val mcqCount: Int = 0,
 )
 
 data class DayActivity(
@@ -210,6 +218,9 @@ data class EstudiaRemoteCard(
     val front: String,
     val back: String,
     val updatedAt: Long,
+    val cardType: String = "basic",
+    val options: List<String> = emptyList(),
+    val correctIndex: Int = 0,
 )
 
 data class SyncResult(

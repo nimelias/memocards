@@ -101,8 +101,9 @@ fun DeckDetailScreen(
     } else {
         (buckets.studiedToday.toFloat() / dailyTotal).coerceIn(0f, 1f)
     }
-    val clozeCount = notes.count { ClozeFormat.isCloze(it.fields.front) }
-    val qaCount = notes.size - clozeCount
+    val clozeCount = notes.count { !it.fields.isMcq && ClozeFormat.isCloze(it.fields.front) }
+    val mcqCount = notes.count { it.fields.isMcq }
+    val qaCount = notes.size - clozeCount - mcqCount
 
     AmbientGlowBackdrop(theme = settings.theme, intensity = settings.glowIntensity) {
         Column(
@@ -156,6 +157,7 @@ fun DeckDetailScreen(
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             TypeChip(label = "Cloze", count = clozeCount)
                             TypeChip(label = "Q&A", count = qaCount)
+                            TypeChip(label = "Test", count = mcqCount)
                         }
                     }
                 }
@@ -295,7 +297,11 @@ fun DeckDetailScreen(
                     }
                 } else {
                     items(notes, key = { it.id }) { note ->
-                        val cloze = ClozeFormat.isCloze(note.fields.front)
+                        val typeLabel = when {
+                            note.fields.isMcq -> "Test"
+                            ClozeFormat.isCloze(note.fields.front) -> "Cloze"
+                            else -> "Q&A"
+                        }
                         Column(
                             Modifier
                                 .fillMaxWidth()
@@ -308,7 +314,7 @@ fun DeckDetailScreen(
                                     .padding(horizontal = 10.dp, vertical = 3.dp),
                             ) {
                                 Text(
-                                    if (cloze) "Cloze" else "Q&A",
+                                    typeLabel,
                                     color = palette.primary,
                                     fontSize = scaledSp(11f),
                                     fontWeight = FontWeight.SemiBold,
@@ -316,11 +322,18 @@ fun DeckDetailScreen(
                             }
                             Spacer(Modifier.height(8.dp))
                             Text(
-                                note.fields.front.ifBlank { "(sin frente)" },
+                                note.fields.front.ifBlank { "(sin enunciado)" },
                                 color = palette.text,
                                 fontSize = scaledSp(15f),
                             )
-                            if (note.fields.back.isNotBlank()) {
+                            if (note.fields.isMcq) {
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    note.fields.options.joinToString(" · "),
+                                    color = palette.muted,
+                                    fontSize = scaledSp(13f),
+                                )
+                            } else if (note.fields.back.isNotBlank()) {
                                 Spacer(Modifier.height(4.dp))
                                 Text(note.fields.back, color = palette.muted, fontSize = scaledSp(13f))
                             }

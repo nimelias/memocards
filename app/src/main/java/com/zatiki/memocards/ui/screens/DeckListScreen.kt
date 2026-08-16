@@ -582,6 +582,7 @@ private fun typeSummaryLabel(summary: DeckSummary): String {
     val parts = buildList {
         if (summary.clozeCount > 0) add("${summary.clozeCount} cloze")
         if (summary.qaCount > 0) add("${summary.qaCount} Q&A")
+        if (summary.mcqCount > 0) add("${summary.mcqCount} test")
     }
     return if (parts.isEmpty()) "${summary.cardCount} cartas" else parts.joinToString(" · ")
 }

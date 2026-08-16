@@ -94,6 +94,17 @@ class EstudiaApi(
                                 front = o.optString("front", ""),
                                 back = o.optString("back", ""),
                                 updatedAt = o.optLong("updatedAt", 0L),
+                                cardType = o.optString("cardType", "basic").ifBlank { "basic" },
+                                options = buildList {
+                                    val arrOpts = o.optJSONArray("options")
+                                    if (arrOpts != null) {
+                                        for (j in 0 until arrOpts.length()) {
+                                            val v = arrOpts.optString(j, "").trim()
+                                            if (v.isNotEmpty()) add(v)
+                                        }
+                                    }
+                                },
+                                correctIndex = o.optInt("correctIndex", 0),
                             ),
                         )
                     } catch (e: Exception) {

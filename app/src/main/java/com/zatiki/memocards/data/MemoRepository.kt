@@ -67,11 +67,24 @@ class MemoRepository(private val dao: MemoDao) {
     fun parseFields(raw: String): NoteFields {
         return try {
             val o = JSONObject(raw)
+            val optionsArr = o.optJSONArray("options")
+            val options = buildList {
+                if (optionsArr != null) {
+                    for (i in 0 until optionsArr.length()) {
+                        val v = optionsArr.optString(i, "").trim()
+                        if (v.isNotEmpty()) add(v)
+                    }
+                }
+            }
+            val type = o.optString("type", "basic").ifBlank { "basic" }
             NoteFields(
                 front = o.optString("front", ""),
                 back = o.optString("back", ""),
                 frontImage = o.optString("frontImage").takeIf { it.isNotBlank() },
                 backImage = o.optString("backImage").takeIf { it.isNotBlank() },
+                type = if (type == "mcq" || options.size >= 2) "mcq" else "basic",
+                options = options,
+                correctIndex = o.optInt("correctIndex", 0).coerceAtLeast(0),
             )
         } catch (_: Exception) {
             NoteFields()
@@ -84,6 +97,18 @@ class MemoRepository(private val dao: MemoDao) {
         o.put("back", fields.back)
         if (fields.frontImage != null) o.put("frontImage", fields.frontImage)
         if (fields.backImage != null) o.put("backImage", fields.backImage)
+        if (fields.isMcq) {
+            o.put("type", "mcq")
+            val arr = org.json.JSONArray()
+            fields.options.forEach { arr.put(it) }
+            o.put("options", arr)
+            o.put(
+                "correctIndex",
+                fields.correctIndex.coerceIn(0, (fields.options.size - 1).coerceAtLeast(0)),
+            )
+        } else {
+            o.put("type", "basic")
+        }
         return o.toString()
     }
 
@@ -274,22 +299,24 @@ class MemoRepository(private val dao: MemoDao) {
 
     suspend fun listDeckSummaries(): List<DeckSummary> {
         val counts = dao.cardCountsByDeck().associate { it.deckId to it.count }
-        val typeCounts = mutableMapOf<Long, Pair<Int, Int>>()
+        val typeCounts = mutableMapOf<Long, Triple<Int, Int, Int>>()
         for (row in dao.listNoteTypeRows()) {
-            val (cloze, qa) = typeCounts[row.deckId] ?: (0 to 0)
-            if (isClozeFront(parseFields(row.fieldsJson).front)) {
-                typeCounts[row.deckId] = (cloze + 1) to qa
-            } else {
-                typeCounts[row.deckId] = cloze to (qa + 1)
+            val (cloze, qa, mcq) = typeCounts[row.deckId] ?: Triple(0, 0, 0)
+            val fields = parseFields(row.fieldsJson)
+            when {
+                fields.isMcq -> typeCounts[row.deckId] = Triple(cloze, qa, mcq + 1)
+                isClozeFront(fields.front) -> typeCounts[row.deckId] = Triple(cloze + 1, qa, mcq)
+                else -> typeCounts[row.deckId] = Triple(cloze, qa + 1, mcq)
             }
         }
         return listDecks().map { deck ->
-            val types = typeCounts[deck.id] ?: (0 to 0)
+            val types = typeCounts[deck.id] ?: Triple(0, 0, 0)
             DeckSummary(
                 deck = deck,
                 cardCount = counts[deck.id] ?: 0,
                 clozeCount = types.first,
                 qaCount = types.second,
+                mcqCount = types.third,
             )
         }
     }
@@ -777,7 +804,13 @@ class MemoRepository(private val dao: MemoDao) {
         val failures = mutableListOf<String>()
         for (remote in remoteCards) {
             try {
-                val fields = NoteFields(front = remote.front, back = remote.back)
+                val fields = NoteFields(
+                    front = remote.front,
+                    back = remote.back,
+                    type = if (remote.cardType == "mcq" || remote.options.size >= 2) "mcq" else "basic",
+                    options = remote.options,
+                    correctIndex = remote.correctIndex,
+                )
                 val localCard = dao.getCardByRemoteId(remote.id)
                 if (localCard != null) {
                     val note = dao.getNote(localCard.noteId) ?: continue

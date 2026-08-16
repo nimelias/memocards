@@ -121,6 +121,7 @@ fun ReviewScreen(
     var queue by remember { mutableStateOf<List<CardWithNote>>(emptyList()) }
     var index by remember { mutableIntStateOf(0) }
     var revealed by remember { mutableStateOf(false) }
+    var selectedMcqIndex by remember { mutableIntStateOf(-1) }
     var loading by remember { mutableStateOf(true) }
     var finished by remember { mutableStateOf(false) }
     var revealedAt by remember { mutableStateOf(0L) }
@@ -135,6 +136,7 @@ fun ReviewScreen(
         deckReviewCount = repo.countDeckReviews(deckId)
         index = 0
         revealed = false
+        selectedMcqIndex = -1
         revealedAt = 0L
         finished = queue.isEmpty()
         loading = false
@@ -165,11 +167,18 @@ fun ReviewScreen(
         revealedAt = System.currentTimeMillis()
     }
 
+    fun selectMcqOption(optionIndex: Int) {
+        if (revealed) return
+        selectedMcqIndex = optionIndex
+        revealBack()
+    }
+
     fun advanceAfterRating(cardId: Long, rating: ReviewRating) {
         val elapsedMs = if (revealedAt > 0L) {
             (System.currentTimeMillis() - revealedAt).coerceAtLeast(0L)
         } else 0L
         revealed = false
+        selectedMcqIndex = -1
         revealedAt = 0L
         if (index + 1 >= queue.size) {
             finished = true
@@ -239,7 +248,8 @@ fun ReviewScreen(
                     else -> {
                         val front = current.note.fields.front
                         val back = current.note.fields.back
-                        val cloze = ClozeFormat.isCloze(front)
+                        val mcq = current.note.fields.isMcq
+                        val cloze = !mcq && ClozeFormat.isCloze(front)
                         key(current.card.id) {
                             Row(
                                 Modifier.fillMaxWidth(),
@@ -264,8 +274,13 @@ fun ReviewScreen(
                                 front = front,
                                 back = back,
                                 cloze = cloze,
+                                mcq = mcq,
+                                options = current.note.fields.options,
+                                correctIndex = current.note.fields.correctIndex,
+                                selectedIndex = selectedMcqIndex,
                                 revealed = revealed,
                                 onReveal = { revealBack() },
+                                onSelectOption = { selectMcqOption(it) },
                                 modifier = Modifier
                                     .weight(1f)
                                     .fillMaxWidth(),
@@ -283,7 +298,7 @@ fun ReviewScreen(
                 }
             }
 
-            if (!loading && !finished && current != null && !revealed) {
+            if (!loading && !finished && current != null && !revealed && !current.note.fields.isMcq) {
                 Box(
                     Modifier
                         .fillMaxSize()
@@ -655,19 +670,26 @@ private fun RatingArcMenu(
 
 /**
  * Carta Emich: anverso y reverso en un solo contenedor (sin paneles partidos).
- * Cloze revela in-place; Q&A muestra pregunta arriba y respuesta debajo.
+ * Cloze revela in-place; Q&A muestra pregunta arriba y respuesta debajo;
+ * MCQ muestra opciones con feedback inmediato.
  */
 @Composable
 private fun IntegratedStudyCard(
     front: String,
     back: String,
     cloze: Boolean,
+    mcq: Boolean = false,
+    options: List<String> = emptyList(),
+    correctIndex: Int = 0,
+    selectedIndex: Int = -1,
     revealed: Boolean,
     onReveal: () -> Unit,
+    onSelectOption: (Int) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val palette = LocalMemoPalette.current
     val shape = RoundedCornerShape(24.dp)
+    val safeCorrect = correctIndex.coerceIn(0, (options.size - 1).coerceAtLeast(0))
 
     Column(
         modifier
@@ -683,6 +705,65 @@ private fun IntegratedStudyCard(
             verticalArrangement = Arrangement.Center,
         ) {
             when {
+                mcq -> {
+                    Text(
+                        front.ifBlank { "—" },
+                        color = palette.text,
+                        fontSize = scaledSp(20f),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    options.forEachIndexed { idx, option ->
+                        val isSelected = selectedIndex == idx
+                        val isCorrect = idx == safeCorrect
+                        val bg = when {
+                            !revealed -> palette.surface
+                            isCorrect -> Color(0xFF16A34A).copy(alpha = 0.22f)
+                            isSelected -> Color(0xFFDC2626).copy(alpha = 0.18f)
+                            else -> palette.surface
+                        }
+                        val borderColor = when {
+                            !revealed -> palette.border
+                            isCorrect -> Color(0xFF16A34A)
+                            isSelected -> Color(0xFFDC2626)
+                            else -> palette.border
+                        }
+                        Surface(
+                            onClick = { onSelectOption(idx) },
+                            enabled = !revealed,
+                            shape = RoundedCornerShape(14.dp),
+                            color = bg,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, borderColor),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                        ) {
+                            Text(
+                                option,
+                                color = palette.text,
+                                fontSize = scaledSp(16f),
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                            )
+                        }
+                    }
+                    if (revealed) {
+                        Spacer(Modifier.height(12.dp))
+                        val correct = selectedIndex == safeCorrect
+                        Text(
+                            if (correct) {
+                                "Correcto"
+                            } else {
+                                "Incorrecto · respuesta: ${options.getOrNull(safeCorrect) ?: back}"
+                            },
+                            color = if (correct) Color(0xFF16A34A) else Color(0xFFDC2626),
+                            fontSize = scaledSp(15f),
+                            fontWeight = FontWeight.SemiBold,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
                 cloze && revealed -> {
                     Text(
                         ClozeFormat.revealed(front, back, palette.primary),
@@ -733,7 +814,7 @@ private fun IntegratedStudyCard(
         }
 
         Spacer(Modifier.height(8.dp))
-        if (!revealed) {
+        if (!revealed && !mcq) {
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -755,6 +836,16 @@ private fun IntegratedStudyCard(
                     )
                 }
             }
+        } else if (!revealed && mcq) {
+            Text(
+                "Elige una opción",
+                color = palette.muted,
+                fontSize = scaledSp(13f),
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+            )
         } else {
             Spacer(
                 Modifier
