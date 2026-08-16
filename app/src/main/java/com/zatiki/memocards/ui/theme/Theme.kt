@@ -9,7 +9,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
@@ -101,7 +100,9 @@ fun MemoCardsTheme(
             isAppearanceLightStatusBars = !darkTheme
             isAppearanceLightNavigationBars = !darkTheme
         }
-        window.navigationBarColor = palette.background.copy(alpha = 0.92f).toArgb()
+        // Transparente: la barra frosted de la app ocupa el inset; un color
+        // semiópaque aquí se veía a través del cristal y generaba bandas.
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
     }
     val scheme = if (darkTheme) {
         darkColorScheme(

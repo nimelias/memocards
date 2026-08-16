@@ -51,7 +51,7 @@ fun MemoBottomBar(
     Box(
         modifier
             .fillMaxWidth()
-            .memoGlass(palette, barShape, alpha = 0.58f, elevation = 16.dp)
+            .memoGlass(palette, barShape, alpha = 0.78f, elevation = 0.dp)
             .navigationBarsPadding()
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
@@ -80,7 +80,7 @@ fun MemoBottomBar(
                     Modifier
                         .offset(y = (-10).dp)
                         .size(54.dp)
-                        .shadow(6.dp, RoundedCornerShape(14.dp))
+                        .shadow(4.dp, RoundedCornerShape(14.dp))
                         .clip(RoundedCornerShape(14.dp))
                         .background(palette.primary)
                         .clickable(onClick = onContinueStudy),

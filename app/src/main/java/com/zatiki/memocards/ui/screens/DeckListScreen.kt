@@ -158,13 +158,17 @@ fun DeckListScreen(
             .background(palette.background),
     ) {
         AmbientGlowBackdrop(theme = settings.theme, intensity = settings.glowIntensity) {
-            PerspectiveGrid(
-                color = palette.primary.copy(alpha = 0.22f),
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(140.dp),
-            )
+            // Solo en temas oscuros/Emich: en claro las líneas discontinuas
+            // se leían como artefactos bajo la barra translúcida.
+            if (settings.theme.isDark) {
+                PerspectiveGrid(
+                    color = palette.primary.copy(alpha = 0.22f),
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(140.dp),
+                )
+            }
 
             Column(
                 Modifier
