@@ -77,6 +77,7 @@ import com.zatiki.memocards.domain.RatingLayout
 import com.zatiki.memocards.domain.ReviewRating
 import com.zatiki.memocards.domain.UiSettings
 import com.zatiki.memocards.ui.ClozeFormat
+import com.zatiki.memocards.ui.McqOptions
 import com.zatiki.memocards.ui.components.AmbientGlowBackdrop
 import com.zatiki.memocards.ui.components.memoGlass
 import com.zatiki.memocards.ui.theme.LocalMemoPalette
@@ -128,12 +129,14 @@ fun ReviewScreen(
     var sessionKey by remember { mutableIntStateOf(0) }
     var pendingReviews by remember { mutableIntStateOf(0) }
     var deckReviewCount by remember { mutableIntStateOf(0) }
+    var totalReviewCount by remember { mutableIntStateOf(0) }
 
     suspend fun loadQueue() {
         val keepCardVisible = queue.isNotEmpty() && !finished
         if (!keepCardVisible) loading = true
         queue = repo.getDueCards(deckId, 50, advanceDays, queueFilter)
         deckReviewCount = repo.countDeckReviews(deckId)
+        totalReviewCount = repo.countAllReviews()
         index = 0
         revealed = false
         selectedMcqIndex = -1
@@ -250,6 +253,15 @@ fun ReviewScreen(
                         val back = current.note.fields.back
                         val mcq = current.note.fields.isMcq
                         val cloze = !mcq && ClozeFormat.isCloze(front)
+                        val (mcqOptions, mcqCorrectIndex) = if (mcq) {
+                            McqOptions.forDisplay(
+                                current.note.fields.options,
+                                current.note.fields.correctIndex,
+                            )
+                        } else {
+                            emptyList<String>() to 0
+                        }
+                        val arcExperience = maxOf(deckReviewCount, totalReviewCount)
                         key(current.card.id) {
                             Row(
                                 Modifier.fillMaxWidth(),
@@ -275,8 +287,8 @@ fun ReviewScreen(
                                 back = back,
                                 cloze = cloze,
                                 mcq = mcq,
-                                options = current.note.fields.options,
-                                correctIndex = current.note.fields.correctIndex,
+                                options = mcqOptions,
+                                correctIndex = mcqCorrectIndex,
                                 selectedIndex = selectedMcqIndex,
                                 revealed = revealed,
                                 onReveal = { revealBack() },
@@ -325,7 +337,7 @@ fun ReviewScreen(
                     layout = settings.ratingLayout,
                     labelMode = settings.arcLabelMode,
                     interactive = revealed,
-                    hintDelayMs = if (deckReviewCount < 3) 2_500L else 8_000L,
+                    experienceReviews = arcExperience,
                     onRate = { rating -> advanceAfterRating(current.card.id, rating) },
                 )
             }
@@ -356,14 +368,31 @@ private fun RatingBar(onRate: (ReviewRating) -> Unit) {
  * Abanico semicircular 180° anclado al lateral pulsado (centro en Y del toque).
  * Tamaño ≈ un tercio del diámetro anterior; iconos blancos y texto bold más grande.
  */
+private data class SideHintProfile(
+    val delayMs: Long,
+    val pulseAlpha: Float,
+    val pulseOnMs: Long,
+    val pulseOffMs: Long,
+)
+
+private fun sideHintProfile(experienceReviews: Int): SideHintProfile? = when {
+    experienceReviews >= 60 -> null
+    experienceReviews >= 40 -> SideHintProfile(18_000L, 0.12f, 700L, 6_000L)
+    experienceReviews >= 25 -> SideHintProfile(14_000L, 0.20f, 850L, 5_000L)
+    experienceReviews >= 12 -> SideHintProfile(10_000L, 0.30f, 900L, 4_000L)
+    experienceReviews >= 5 -> SideHintProfile(8_000L, 0.38f, 950L, 3_500L)
+    else -> SideHintProfile(2_500L, 0.50f, 1_000L, 2_500L)
+}
+
 @Composable
 private fun RatingArcMenu(
     layout: RatingLayout,
     labelMode: ArcLabelMode,
     interactive: Boolean,
-    hintDelayMs: Long = 8_000L,
+    experienceReviews: Int = 0,
     onRate: (ReviewRating) -> Unit,
 ) {
+    val hintProfile = remember(experienceReviews) { sideHintProfile(experienceReviews) }
     val defaultRight = layout == RatingLayout.ARC_RIGHT
     var arcFromRight by remember { mutableStateOf(defaultRight) }
     var arcPivotYFraction by remember { mutableFloatStateOf(0.5f) }
@@ -448,22 +477,23 @@ private fun RatingArcMenu(
         highlightIndex = -1
     }
 
-    LaunchedEffect(interactive, hintDelayMs, expanded) {
+    LaunchedEffect(interactive, hintProfile, expanded) {
         showSideHint = false
-        if (!interactive || expanded) return@LaunchedEffect
-        delay(hintDelayMs)
+        if (!interactive || expanded || hintProfile == null) return@LaunchedEffect
+        delay(hintProfile.delayMs)
         if (interactive && !expanded) showSideHint = true
     }
 
     var hintPulse by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(showSideHint, interactive, expanded) {
+    LaunchedEffect(showSideHint, interactive, expanded, hintProfile) {
         hintPulse = 0f
-        if (!showSideHint || !interactive || expanded) return@LaunchedEffect
+        val profile = hintProfile
+        if (!showSideHint || !interactive || expanded || profile == null) return@LaunchedEffect
         while (true) {
-            hintPulse = 0.50f
-            delay(1_000)
+            hintPulse = profile.pulseAlpha
+            delay(profile.pulseOnMs)
             hintPulse = 0f
-            delay(2_500)
+            delay(profile.pulseOffMs)
         }
     }
 
@@ -751,11 +781,7 @@ private fun IntegratedStudyCard(
                         Spacer(Modifier.height(12.dp))
                         val correct = selectedIndex == safeCorrect
                         Text(
-                            if (correct) {
-                                "Correcto"
-                            } else {
-                                "Incorrecto · respuesta: ${options.getOrNull(safeCorrect) ?: back}"
-                            },
+                            if (correct) "Correcto" else "Incorrecto",
                             color = if (correct) Color(0xFF16A34A) else Color(0xFFDC2626),
                             fontSize = scaledSp(15f),
                             fontWeight = FontWeight.SemiBold,

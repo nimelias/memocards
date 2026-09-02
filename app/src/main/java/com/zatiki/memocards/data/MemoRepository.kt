@@ -598,6 +598,9 @@ class MemoRepository(private val dao: MemoDao) {
     /** Nº de calificaciones históricas del mazo (para ayudas UX). */
     suspend fun countDeckReviews(deckId: Long): Int = dao.countReviewsForDeck(deckId)
 
+    /** Repasos totales en la app (para atenuar ayudas laterales). */
+    suspend fun countAllReviews(): Int = dao.countAllReviews()
+
     suspend fun getUiSettings(): UiSettings {
         val map = dao.getUiSettingsRows().associate { it.key to it.value }
         val theme = ThemeName.from(map["ui.theme"])

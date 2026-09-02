@@ -394,6 +394,9 @@ interface MemoDao {
     )
     suspend fun countReviewsForDeck(deckId: Long): Int
 
+    @Query("SELECT COUNT(*) FROM review_log")
+    suspend fun countAllReviews(): Int
+
     @Query(
         """
         SELECT n.deck_id AS deck_id, MAX(r.reviewed_at) AS last_reviewed_at

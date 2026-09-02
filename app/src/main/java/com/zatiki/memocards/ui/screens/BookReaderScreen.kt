@@ -22,10 +22,11 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -44,9 +45,11 @@ import com.zatiki.memocards.data.MemoRepository
 import com.zatiki.memocards.domain.Book
 import com.zatiki.memocards.domain.BookAnnotation
 import com.zatiki.memocards.domain.UiSettings
+import com.zatiki.memocards.ui.AnnotatedBookText
+import com.zatiki.memocards.ui.BookAnnotationSpans
 import com.zatiki.memocards.ui.MarkdownBlocks
 import com.zatiki.memocards.ui.MdBlock
-import com.zatiki.memocards.ui.MdKind
+import androidx.compose.material3.Text
 import com.zatiki.memocards.ui.components.memoGlass
 import com.zatiki.memocards.ui.theme.LocalMemoPalette
 import com.zatiki.memocards.ui.theme.scaledSp
@@ -65,6 +68,7 @@ fun BookReaderScreen(
     var pane by remember { mutableStateOf(BookPane.Reading) }
     val listState = rememberLazyListState()
     var targetBlock by remember { mutableIntStateOf(-1) }
+    var selectedAnnotation by remember { mutableStateOf<BookAnnotation?>(null) }
 
     LaunchedEffect(bookId) {
         book = repo.getBook(bookId)
@@ -203,12 +207,73 @@ fun BookReaderScreen(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 itemsIndexed(blocks, key = { index, block -> "$index-${block.kind}-${block.text.take(24)}" }) { _, block ->
-                    MdBlockView(block = block, settings = settings)
+                    MdBlockView(
+                        block = block,
+                        settings = settings,
+                        annotations = annotations,
+                        onAnnotationClick = { selectedAnnotation = it },
+                    )
                 }
                 item { Spacer(Modifier.height(48.dp)) }
             }
         }
     }
+
+    selectedAnnotation?.let { item ->
+        AnnotationDetailDialog(
+            item = item,
+            onDismiss = { selectedAnnotation = null },
+        )
+    }
+}
+
+@Composable
+private fun AnnotationDetailDialog(
+    item: BookAnnotation,
+    onDismiss: () -> Unit,
+) {
+    val palette = LocalMemoPalette.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                item.chapter.ifBlank { "Anotación" },
+                color = palette.text,
+                fontWeight = FontWeight.SemiBold,
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (item.quote.isNotBlank()) {
+                    Text(
+                        item.quote,
+                        color = palette.text,
+                        fontSize = scaledSp(15f),
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+                if (item.fragment.isNotBlank() && item.fragment != item.quote) {
+                    Text(
+                        item.fragment,
+                        color = palette.muted,
+                        fontSize = scaledSp(13f),
+                    )
+                }
+                if (item.note.isNotBlank()) {
+                    Text(
+                        item.note,
+                        color = palette.text,
+                        fontSize = scaledSp(14f),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cerrar", color = palette.primary)
+            }
+        },
+    )
 }
 
 @Composable
@@ -288,9 +353,15 @@ private fun annotationColor(raw: String): Color {
 private fun MdBlockView(
     block: MdBlock,
     settings: UiSettings,
+    annotations: List<BookAnnotation> = emptyList(),
+    onAnnotationClick: (BookAnnotation) -> Unit = {},
 ) {
     val palette = LocalMemoPalette.current
     val line = settings.lineHeight
+    val blockAnnotations = remember(block.text, annotations) {
+        annotations.filter { BookAnnotationSpans.quoteRange(block.text, it.quote) != null }
+    }
+    val markColor: (BookAnnotation) -> Color = { annotationColor(it.color) }
     when (block.kind) {
         MdKind.H1 -> {
             Spacer(Modifier.height(12.dp))
@@ -332,15 +403,28 @@ private fun MdBlockView(
             )
         }
         MdKind.PARAGRAPH -> {
-            Text(
-                block.text,
-                color = palette.text,
-                fontSize = scaledSp(17f),
-                lineHeight = scaledSp(17f * line),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 12.dp),
-            )
+            if (blockAnnotations.isEmpty()) {
+                Text(
+                    block.text,
+                    color = palette.text,
+                    fontSize = scaledSp(17f),
+                    lineHeight = scaledSp(17f * line),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp),
+                )
+            } else {
+                AnnotatedBookText(
+                    text = block.text,
+                    annotations = blockAnnotations,
+                    color = palette.text,
+                    fontSize = scaledSp(17f),
+                    lineHeight = scaledSp(17f * line),
+                    markColor = markColor,
+                    modifier = Modifier.padding(bottom = 12.dp),
+                    onAnnotationClick = onAnnotationClick,
+                )
+            }
         }
         MdKind.LIST_ITEM -> {
             Row(
@@ -354,13 +438,26 @@ private fun MdBlockView(
                     fontSize = scaledSp(17f),
                     lineHeight = scaledSp(17f * line),
                 )
-                Text(
-                    block.text,
-                    color = palette.text,
-                    fontSize = scaledSp(17f),
-                    lineHeight = scaledSp(17f * line),
-                    modifier = Modifier.weight(1f),
-                )
+                if (blockAnnotations.isEmpty()) {
+                    Text(
+                        block.text,
+                        color = palette.text,
+                        fontSize = scaledSp(17f),
+                        lineHeight = scaledSp(17f * line),
+                        modifier = Modifier.weight(1f),
+                    )
+                } else {
+                    AnnotatedBookText(
+                        text = block.text,
+                        annotations = blockAnnotations,
+                        color = palette.text,
+                        fontSize = scaledSp(17f),
+                        lineHeight = scaledSp(17f * line),
+                        markColor = markColor,
+                        modifier = Modifier.weight(1f),
+                        onAnnotationClick = onAnnotationClick,
+                    )
+                }
             }
         }
     }
