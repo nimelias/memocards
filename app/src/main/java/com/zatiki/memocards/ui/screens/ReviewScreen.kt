@@ -164,6 +164,7 @@ fun ReviewScreen(
     BackHandler { finishAndLeave() }
 
     val current = queue.getOrNull(index)
+    val arcExperience = maxOf(deckReviewCount, totalReviewCount)
 
     fun revealBack() {
         revealed = true
@@ -261,7 +262,6 @@ fun ReviewScreen(
                         } else {
                             emptyList<String>() to 0
                         }
-                        val arcExperience = maxOf(deckReviewCount, totalReviewCount)
                         key(current.card.id) {
                             Row(
                                 Modifier.fillMaxWidth(),
